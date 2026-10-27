@@ -262,6 +262,26 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
+  /artifacts/{artifactId}/stitch-data:
+    parameters:
+      - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Artifacts]
+      summary: Stitch data for the Studio simulator (project readers only)
+      description: |
+        Serves a stitch_data artifact (stitch-data format v1) as gzip-encoded JSON
+        (Content-Encoding gzip). Artifacts are immutable: the ETag is the content SHA-256 and
+        clients may cache it (If-None-Match → 304). Not a download: no export event is recorded.
+      operationId: getStitchData
+      responses:
+        '200':
+          description: Stitch data
+          headers:
+            ETag: { schema: { type: string } }
+          content: { application/json: { schema: { type: object } } }
+        '304': { description: Not modified }
+        '404': { $ref: '#/components/responses/Error' }
+
   /design-projects/{id}/rights:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
     post:

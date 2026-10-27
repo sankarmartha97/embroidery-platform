@@ -1,2 +1,2 @@
-// Artifact listing and download URLs arrive with the jobs API. Workers use the repository now.
+export { createArtifactsRouter } from './artifacts.routes.js';
 export { createArtifactsRepository } from './artifacts.repository.js';

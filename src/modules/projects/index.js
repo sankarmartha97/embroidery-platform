@@ -1,6 +1,6 @@
 export { createProjectsRouter } from './projects.routes.js';
 export { createVersionsRepository } from './versions.repository.js';
-export { loadReadableProject } from './projects.access.js';
+export { findProjectAccess, loadReadableProject } from './projects.access.js';
 export {
   isStaff,
   canCreateProject,
@@ -9,6 +9,7 @@ export {
   canCreateJob,
   canCreateExport,
   canDownloadArtifact,
+  downloadDecision,
   canSubmit,
   canReview,
   canManageRights,

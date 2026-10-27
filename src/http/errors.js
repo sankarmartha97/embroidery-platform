@@ -16,6 +16,12 @@ export const errors = {
   unauthenticated: () => new AppError('UNAUTHENTICATED', 401, 'Authentication required.'),
   forbidden: () => new AppError('FORBIDDEN', 403, 'You are not allowed to do this.'),
   notFound: () => new AppError('NOT_FOUND', 404, 'Not found.'),
+  entitlementRequired: () =>
+    new AppError(
+      'ENTITLEMENT_REQUIRED',
+      403,
+      'Purchase this design or start a subscription to download it.',
+    ),
   invalidState: (message) => new AppError('INVALID_STATE', 409, message),
   draftConflict: (currentRevision) =>
     new AppError(

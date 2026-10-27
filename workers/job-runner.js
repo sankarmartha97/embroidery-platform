@@ -1,5 +1,5 @@
 import { gunzipSync } from 'node:zlib';
-import { sha256 } from '../src/aws/s3.js';
+import { sha256 } from '../src/lib/hash.js';
 import { transaction } from '../src/db/transaction.js';
 import { newId } from '../src/lib/ids.js';
 import { createArtifactsRepository } from '../src/modules/artifacts/index.js';

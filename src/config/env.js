@@ -67,6 +67,17 @@ export const env = Object.freeze({
   SQS_QUEUE_URL_EMB_JOBS: str('SQS_QUEUE_URL_EMB_JOBS'),
   S3_BUCKET_ARTIFACTS: str('S3_BUCKET_ARTIFACTS'),
 
+  // Downloads (07-security-licensing/storage-access.md): signed URLs expire in at most 5 minutes.
+  DOWNLOAD_URL_TTL_SECONDS: int('DOWNLOAD_URL_TTL_SECONDS', 300),
+  // Key for hashing client IPs in download audit rows (never store raw IPs).
+  IP_HASH_SECRET: str('IP_HASH_SECRET', {
+    fallback: nodeEnv === 'production' ? undefined : 'dev-only-ip-hash-secret',
+    required: nodeEnv === 'production',
+  }),
+  // Entitlement stub until the marketplace integration (OQ-04, S10-01): JSON
+  // { "<userId>": [{ "projectId": "...", "basis": "purchase" | "subscription", "ref": "..." }] }
+  DEV_ENTITLEMENTS: json('DEV_ENTITLEMENTS', {}),
+
   // Name recorded on new jobs; the worker's engine must match (ADR-0005: 'fake' until Gate 1).
   DIGITIZING_ENGINE: str('DIGITIZING_ENGINE', { fallback: 'fake' }),
 
@@ -85,6 +96,12 @@ if (env.IS_PROD && env.DB_CREATE_USERS_STUB) {
 }
 if (env.IS_PROD && env.FORMATS_ALLOW_UNGATED) {
   invalid.push('FORMATS_ALLOW_UNGATED must not be enabled in production');
+}
+if (env.DOWNLOAD_URL_TTL_SECONDS < 1 || env.DOWNLOAD_URL_TTL_SECONDS > 300) {
+  invalid.push('DOWNLOAD_URL_TTL_SECONDS must be between 1 and 300');
+}
+if (env.IS_PROD && Object.keys(env.DEV_ENTITLEMENTS).length > 0) {
+  invalid.push('DEV_ENTITLEMENTS must be empty in production');
 }
 if (env.IS_PROD && Object.keys(env.DEV_ROLE_ASSIGNMENTS).length > 0) {
   invalid.push('DEV_ROLE_ASSIGNMENTS must be empty in production');

@@ -37,12 +37,20 @@ export function authenticate({ verifyToken, rolesProvider }) {
     }
 
     const roles = await rolesProvider.getRoles(identity.userId);
+    req.log = req.log.child({ userId: identity.userId });
+    const log = req.log;
     req.actor = Object.freeze({
       userId: identity.userId,
       roles: new Set(roles),
       correlationId: req.correlationId,
+      /**
+       * Audit event (07-security-licensing/platform-controls.md). Written as a structured log
+       * line with `audit: true`; logs are archived for audit retention (09-devops).
+       */
+      audit(type, details = {}) {
+        log.info({ audit: true, auditType: type, actorId: identity.userId, ...details }, 'audit');
+      },
     });
-    req.log = req.log.child({ userId: identity.userId });
     next();
   };
 }

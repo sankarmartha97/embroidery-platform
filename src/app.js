@@ -3,6 +3,7 @@ import { authenticate } from './http/auth.js';
 import { correlation } from './http/correlation.js';
 import { createErrorHandler, notFoundHandler } from './http/errors.js';
 import { rateLimit } from './http/rate-limit.js';
+import { createArtifactsRouter } from './modules/artifacts/index.js';
 import { createHealthRouter } from './modules/health/index.js';
 import { createJobsRouter } from './modules/jobs/index.js';
 import { createMachinesRouter } from './modules/machines/index.js';
@@ -13,7 +14,8 @@ const DOCUMENT_ROUTE = /^\/design-projects\/[^/]+\/draft$/;
 
 /**
  * Express app factory (no listen). Dependencies are injected so tests can supply their own.
- * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max }, allowUngatedFormats: boolean, engineName: string }} deps
+ * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max }, allowUngatedFormats: boolean, engineName: string,
+ *   store, entitlements, downloadTtlSeconds: number, ipHashSecret: string }} deps
  */
 export function createApp(deps) {
   const { db, logger, verifyToken, rolesProvider } = deps;
@@ -44,6 +46,15 @@ export function createApp(deps) {
       db,
       engineName: deps.engineName,
       allowUngatedFormats: deps.allowUngatedFormats,
+    }),
+  );
+  api.use(
+    createArtifactsRouter({
+      db,
+      store: deps.store,
+      entitlements: deps.entitlements,
+      ttlSeconds: deps.downloadTtlSeconds,
+      ipHashSecret: deps.ipHashSecret,
     }),
   );
   app.use('/api/v1', api);

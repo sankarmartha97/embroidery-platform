@@ -75,18 +75,40 @@ export function canCreateExport(actor, project, collaborator) {
 }
 
 /**
- * owner/collaborator · staff · customer with a current entitlement to the published design
- * (machine files and previews only).
+ * Download decision (04-api/authorization.md): owner · staff · collaborator "per above" (machine
+ * files need the export permission, like export jobs) · customer with a current entitlement to
+ * the published design (machine files and previews of the published version only).
+ * `project.publishedVersionId` is the version of the approved publication, or null.
+ * @returns {{ allowed: boolean, basis: 'owner'|'staff'|'collaborator'|'purchase'|'subscription'|'none', reason?: string }}
  */
-export function canDownloadArtifact(actor, project, collaborator, artifact, entitlement) {
-  if (canReadProject(actor, project, collaborator)) return true;
+export function downloadDecision(actor, project, collaborator, artifact, entitlement) {
+  if (isOwner(actor, project)) return { allowed: true, basis: 'owner' };
+  if (activeCollaborator(actor, collaborator)) {
+    if (artifact?.artifactType === 'machine_file' && collaborator.canExport !== true) {
+      return { allowed: false, basis: 'collaborator', reason: 'EXPORT_NOT_ALLOWED' };
+    }
+    return { allowed: true, basis: 'collaborator' };
+  }
+  if (isStaff(actor)) return { allowed: true, basis: 'staff' };
+
   const customerTypes = new Set(['machine_file', 'preview']);
-  return (
-    Boolean(actor?.userId) &&
+  const onSale =
     project?.status === 'published' &&
-    customerTypes.has(artifact?.artifactType) &&
-    entitlement?.current === true
-  );
+    Boolean(project.publishedVersionId) &&
+    artifact?.projectVersionId === project.publishedVersionId &&
+    customerTypes.has(artifact?.artifactType);
+  if (!actor?.userId || !onSale) return { allowed: false, basis: 'none', reason: 'NOT_VISIBLE' };
+  if (entitlement?.current !== true) {
+    return { allowed: false, basis: 'none', reason: 'ENTITLEMENT_REQUIRED' };
+  }
+  return {
+    allowed: true,
+    basis: entitlement.basis === 'subscription' ? 'subscription' : 'purchase',
+  };
+}
+
+export function canDownloadArtifact(actor, project, collaborator, artifact, entitlement) {
+  return downloadDecision(actor, project, collaborator, artifact, entitlement).allowed;
 }
 
 export function canSubmit(actor, project) {
