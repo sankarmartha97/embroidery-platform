@@ -78,6 +78,17 @@ export function createArtifactsRepository(db) {
       return rows[0] ? toArtifact(rows[0]) : null;
     },
 
+    /** The newest stitch data of a version, or null (what digitizeIfMissing looks for). */
+    async latestStitchData(projectVersionId) {
+      const [rows] = await db.execute(
+        `SELECT ${COLUMNS} FROM design_artifacts
+          WHERE project_version_id = ? AND artifact_type = 'stitch_data' AND deleted_at IS NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [projectVersionId],
+      );
+      return rows[0] ? toArtifact(rows[0]) : null;
+    },
+
     async listByJob(jobId) {
       const [rows] = await db.execute(
         `SELECT ${COLUMNS} FROM design_artifacts

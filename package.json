@@ -12,6 +12,7 @@
     "dev:worker": "node --watch --env-file-if-exists=.env workers/main.js",
     "start": "node src/server.js",
     "start:worker": "node workers/main.js",
+    "reconcile": "node --env-file-if-exists=.env workers/reconcile.js",
     "db:migrate": "node --env-file-if-exists=.env src/db/migrate.js",
     "harness": "node tools/format-harness/cli.js",
     "contracts:sync": "node tools/sync-contracts.js",

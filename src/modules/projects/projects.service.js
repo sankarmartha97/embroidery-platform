@@ -8,18 +8,17 @@ import {
 } from '../../lib/document/validate-document.js';
 import { newId } from '../../lib/ids.js';
 import { createReferenceRepository } from '../reference/index.js';
+import { loadReadableWith, UUID } from './projects.access.js';
 import {
   canCreateExport,
   canCreateProject,
   canEditDraft,
   canManageCollaborators,
-  canReadProject,
   canSubmit,
 } from './projects.policy.js';
 import { createProjectsRepository } from './projects.repository.js';
 import { createVersionsRepository } from './versions.repository.js';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES = ['draft', 'in_review', 'published', 'archived'];
 const SCOPES = ['owned', 'shared', 'all'];
 
@@ -50,19 +49,6 @@ function parseIfMatch(header) {
 }
 
 export function createProjectsService({ db }) {
-  /**
-   * Authorization step 3: the object-level read check. Anything the caller cannot see is 404,
-   * so the response never reveals whether a project exists.
-   */
-  async function loadReadable(repo, actor, id, options) {
-    if (!UUID.test(id)) throw errors.notFound();
-    const project = await repo.findById(id, options);
-    if (!project) throw errors.notFound();
-    const collaborator = await repo.findCollaborator(id, actor.userId);
-    if (!canReadProject(actor, project, collaborator)) throw errors.notFound();
-    return { project, collaborator };
-  }
-
   async function assertUsableProfile(conn, actor, machineProfileId) {
     if (!machineProfileId) return null;
     const profile = await createReferenceRepository(conn).findMachineProfile(
@@ -117,7 +103,9 @@ export function createProjectsService({ db }) {
 
     async get(actor, id) {
       const repo = createProjectsRepository(db);
-      const { project, collaborator } = await loadReadable(repo, actor, id, { withDraft: true });
+      const { project, collaborator } = await loadReadableWith(repo, actor, id, {
+        withDraft: true,
+      });
       return {
         ...toResponse(project),
         draft: project.draft,
@@ -133,7 +121,9 @@ export function createProjectsService({ db }) {
     async update(actor, id, changes) {
       return transaction(db, async (conn) => {
         const repo = createProjectsRepository(conn);
-        const { project, collaborator } = await loadReadable(repo, actor, id, { forUpdate: true });
+        const { project, collaborator } = await loadReadableWith(repo, actor, id, {
+          forUpdate: true,
+        });
         if (!canEditDraft(actor, project, collaborator)) throw errors.forbidden();
         assertEditableState(project);
 
@@ -160,7 +150,7 @@ export function createProjectsService({ db }) {
     async saveDraft(actor, id, ifMatch, document) {
       const expected = parseIfMatch(ifMatch);
       const repo = createProjectsRepository(db);
-      const { project, collaborator } = await loadReadable(repo, actor, id);
+      const { project, collaborator } = await loadReadableWith(repo, actor, id);
       if (!canEditDraft(actor, project, collaborator)) throw errors.forbidden();
       assertEditableState(project);
 
@@ -184,7 +174,7 @@ export function createProjectsService({ db }) {
         const projects = createProjectsRepository(conn);
         const versions = createVersionsRepository(conn);
         // Lock the project row: serialises version numbering for this project.
-        const { project, collaborator } = await loadReadable(projects, actor, id, {
+        const { project, collaborator } = await loadReadableWith(projects, actor, id, {
           withDraft: true,
           forUpdate: true,
         });
@@ -221,7 +211,7 @@ export function createProjectsService({ db }) {
     async listVersions(actor, id, query) {
       const limit = parseLimit(query.limit);
       const after = decodeCursor(query.cursor, (k) => Number.isInteger(k?.n) && k.n > 0);
-      await loadReadable(createProjectsRepository(db), actor, id);
+      await loadReadableWith(createProjectsRepository(db), actor, id);
       const rows = await createVersionsRepository(db).list(id, {
         beforeNumber: after?.n,
         limit: limit + 1,

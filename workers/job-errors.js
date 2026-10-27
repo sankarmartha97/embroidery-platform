@@ -11,9 +11,17 @@ export const JOB_ERRORS = Object.freeze({
     summary: "A stitch setting in this design isn't supported yet",
   },
   VALIDATION_FAILED: { retry: 1, summary: 'Design breaks machine limits; see issues' },
-  ENGINE_TIMEOUT: { retry: Infinity, summary: 'Took too long; retrying' },
+  ENGINE_TIMEOUT: {
+    retry: Infinity,
+    summary: 'Took too long; retrying',
+    final: 'Took too long. Try again later, or simplify the design',
+  },
   ENGINE_UNAVAILABLE: { retry: Infinity, summary: 'Digitizing service temporarily unavailable' },
-  ENGINE_RATE_LIMITED: { retry: Infinity, summary: 'Busy; retrying' },
+  ENGINE_RATE_LIMITED: {
+    retry: Infinity,
+    summary: 'Busy; retrying',
+    final: 'Busy. Try again later',
+  },
   ENGINE_INTERNAL: { retry: 2, summary: 'Unexpected engine error' },
   STORAGE_ERROR: { retry: Infinity, summary: 'Temporary storage problem' },
   CANCELLED: { retry: 1, summary: 'Cancelled by user' },
@@ -35,6 +43,12 @@ export function classify(err) {
   }
   if (err?.$metadata || err?.name?.startsWith?.('S3')) return 'STORAGE_ERROR';
   return 'ENGINE_INTERNAL';
+}
+
+/** User-safe summary. `final` is used when no retry follows (the table text says "retrying"). */
+export function summaryFor(code, { final = false } = {}) {
+  const entry = JOB_ERRORS[code];
+  return (final && entry.final) || entry.summary;
 }
 
 /** Whether a failed attempt should be retried. */

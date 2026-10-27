@@ -39,9 +39,12 @@ export function strictify(node, seen = new Set()) {
       ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, strictify(v, seen)]))
       : strictify(value, seen);
   }
-  const isObject = out.type === 'object' || out.properties;
+  // Objects that declare their fields reject unknown ones. Free-form objects ({ type: object }
+  // with no properties, e.g. job settings) stay free-form.
   const composed = out.allOf || out.oneOf || out.anyOf;
-  if (isObject && !composed && !('additionalProperties' in out)) out.additionalProperties = false;
+  if (out.properties && !composed && !('additionalProperties' in out)) {
+    out.additionalProperties = false;
+  }
   return out;
 }
 

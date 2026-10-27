@@ -3,7 +3,7 @@ import { sha256 } from '../src/aws/s3.js';
 import { transaction } from '../src/db/transaction.js';
 import { newId } from '../src/lib/ids.js';
 import { createArtifactsRepository } from '../src/modules/artifacts/index.js';
-import { createJobsRepository } from '../src/modules/jobs/index.js';
+import { closeChildren, createJobsRepository, releaseChildren } from '../src/modules/jobs/index.js';
 import { createVersionsRepository } from '../src/modules/projects/index.js';
 import { RetryLater } from './consumer.js';
 import { EngineError } from './engines/digitizing-engine.js';
@@ -11,7 +11,7 @@ import { digitize } from './handlers/digitize.js';
 import { exportFile } from './handlers/export.js';
 import { simulate } from './handlers/simulate.js';
 import { validateStitches } from './handlers/validate.js';
-import { classify, JOB_ERRORS, shouldRetry, StorageError } from './job-errors.js';
+import { classify, shouldRetry, StorageError, summaryFor } from './job-errors.js';
 
 const HANDLERS = { digitize, simulate, validate: validateStitches, export: exportFile };
 
@@ -113,13 +113,19 @@ export function createJobRunner({
     return stored;
   }
 
-  /** @returns {Promise<boolean>} false if the job was taken from this worker meanwhile */
-  async function commitSuccess(job, attempt, artifacts) {
+  /**
+   * Artifacts, final status and (for digitize) the release of chained jobs commit together.
+   * @returns {Promise<boolean>} false if the job was taken from this worker meanwhile
+   */
+  async function commitSuccess(job, attempt, artifacts, correlationId) {
     return transaction(pool, async (conn) => {
       const repo = createArtifactsRepository(conn);
-      for (const artifact of artifacts) await repo.insertForJob(artifact);
+      const stored = [];
+      for (const artifact of artifacts) stored.push(await repo.insertForJob(artifact));
       const ok = await createJobsRepository(conn).markSucceeded(job.id, attempt, { workerId });
       if (!ok) throw new LostJob();
+      const stitchData = stored.find((a) => a.artifactType === 'stitch_data');
+      if (stitchData) await releaseChildren(conn, job.id, stitchData.id, correlationId);
       return true;
     }).catch((err) => {
       if (err instanceof LostJob) return false;
@@ -127,13 +133,23 @@ export function createJobRunner({
     });
   }
 
+  /** A final status plus the same outcome for chained jobs still waiting on this one. */
+  function finish(jobId, mark, childOutcome) {
+    return transaction(pool, async (conn) => {
+      if (await mark(createJobsRepository(conn))) {
+        await closeChildren(conn, jobId, { ...childOutcome, workerId });
+      }
+    });
+  }
+  const CANCELLED = { status: 'cancelled', code: 'CANCELLED', summary: 'Cancelled by user' };
+
   return {
-    async run(jobId, { log, signal: shutdownSignal, extendVisibility } = {}) {
+    async run(jobId, { log, signal: shutdownSignal, extendVisibility, correlationId } = {}) {
       const job = await jobs.findById(jobId);
       if (!job) throw new Error(`job ${jobId} not found`); // left for the DLQ
 
       if (job.status === 'queued' && job.cancelRequested) {
-        await jobs.markCancelledQueued(jobId, { workerId });
+        await finish(jobId, (repo) => repo.markCancelledQueued(jobId, { workerId }), CANCELLED);
         log?.info({ jobId }, 'job cancelled before start');
         return 'cancelled';
       }
@@ -168,7 +184,7 @@ export function createJobRunner({
       try {
         const outputs = await execute(job, attempt, signal);
         const artifacts = await upload(job, outputs);
-        if (!(await commitSuccess(job, attempt, artifacts))) {
+        if (!(await commitSuccess(job, attempt, artifacts, correlationId))) {
           log?.warn({ jobId, attempt }, 'job was taken from this worker; result discarded');
           return 'lost';
         }
@@ -183,7 +199,11 @@ export function createJobRunner({
           cancel.signal.reason === 'cancel' ||
           (classify(err) === 'CANCELLED' && !timeout.aborted && !shutdownSignal?.aborted)
         ) {
-          await jobs.markCancelledRunning(jobId, attempt, { workerId });
+          await finish(
+            jobId,
+            (repo) => repo.markCancelledRunning(jobId, attempt, { workerId }),
+            CANCELLED,
+          );
           log?.info({ jobId, attempt }, 'job cancelled while running');
           return 'cancelled';
         }
@@ -193,7 +213,7 @@ export function createJobRunner({
         }
 
         const code = timeout.aborted ? 'ENGINE_TIMEOUT' : classify(err);
-        const { summary } = JOB_ERRORS[code];
+        const summary = summaryFor(code);
         // Diagnostics go to restricted logs; the job row gets only the user-safe summary.
         log?.warn({ err, jobId, attempt, code }, 'job attempt failed');
         if (shouldRetry(code, attempt, job.maxAttempts)) {
@@ -205,12 +225,13 @@ export function createJobRunner({
           });
           throw new RetryLater(retryDelay(attempt), code);
         }
-        await jobs.markFailed(jobId, attempt, {
-          code,
-          summary,
-          message: eventMessage(err),
-          workerId,
-        });
+        const final = { status: 'failed', code, summary: summaryFor(code, { final: true }) };
+        await finish(
+          jobId,
+          (repo) =>
+            repo.markFailed(jobId, attempt, { ...final, message: eventMessage(err), workerId }),
+          final,
+        );
         return 'failed';
       } finally {
         clearInterval(beat);

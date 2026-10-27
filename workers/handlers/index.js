@@ -9,7 +9,10 @@ export function createHandlers({ engine, runner }) {
     },
 
     async 'job.queued'(message, context) {
-      await runner.run(message.payload.jobId, context);
+      await runner.run(message.payload.jobId, {
+        ...context,
+        correlationId: message.payload.correlationId,
+      });
     },
   };
 }

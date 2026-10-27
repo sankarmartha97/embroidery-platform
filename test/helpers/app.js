@@ -16,6 +16,7 @@ export async function startApp({
     rolesProvider: createStaticRolesProvider(roles),
     rateLimit,
     allowUngatedFormats: true,
+    engineName: 'fake',
   });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));

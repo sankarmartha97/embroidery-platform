@@ -20,6 +20,7 @@ const app = createApp({
   rolesProvider: createStaticRolesProvider(env.DEV_ROLE_ASSIGNMENTS),
   rateLimit: { windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_MAX },
   allowUngatedFormats: env.FORMATS_ALLOW_UNGATED,
+  engineName: env.DIGITIZING_ENGINE,
 });
 
 const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'api listening'));

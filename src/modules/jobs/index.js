@@ -1,2 +1,3 @@
-// Jobs API (create, get, cancel) arrives in sprint S4. Workers use the repository now.
+export { createJobsRouter } from './jobs.routes.js';
 export { createJobsRepository } from './jobs.repository.js';
+export { closeChildren, enqueueJob, releaseChildren } from './jobs.chain.js';
