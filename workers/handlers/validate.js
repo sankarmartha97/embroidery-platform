@@ -5,7 +5,18 @@ export async function validateStitches({ stitchData, engine, machineProfile, sig
   if (!machineProfile) {
     throw new EngineError('INVALID_DOCUMENT', 'validation needs a machine profile');
   }
-  const report = await engine.validate(stitchData, machineProfile, { signal });
+  const result = await engine.validate(stitchData, machineProfile, { signal });
+  // The report records what it was checked against, so a reader knows which machine it is for.
+  const report = {
+    ...result,
+    machineProfile: {
+      id: machineProfile.id ?? null,
+      name: machineProfile.name ?? null,
+      hoopWidthMm: machineProfile.hoopWidthMm,
+      hoopHeightMm: machineProfile.hoopHeightMm,
+    },
+    engine: engine.describe().name,
+  };
   return [
     {
       artifactType: 'report',
@@ -13,7 +24,7 @@ export async function validateStitches({ stitchData, engine, machineProfile, sig
       ext: 'json',
       body: Buffer.from(JSON.stringify(report)),
       contentType: 'application/json',
-      validationStatus: report.status,
+      validationStatus: result.status,
     },
   ];
 }

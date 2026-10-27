@@ -2,7 +2,7 @@
 
 const COLUMNS = `id, project_version_id, job_id, artifact_type, format_code, storage_key, sha256,
   file_size_bytes, stitch_count, color_count, trim_count, jump_count, width_mm, height_mm,
-  engine_name, engine_version, validation_status, created_at`;
+  engine_name, engine_version, validation_status, validation_report_artifact_id, created_at`;
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
 
@@ -25,6 +25,7 @@ function toArtifact(row) {
     engineName: row.engine_name,
     engineVersion: row.engine_version,
     validationStatus: row.validation_status,
+    validationReportArtifactId: row.validation_report_artifact_id,
     createdAt: row.created_at,
   };
 }
@@ -68,6 +69,15 @@ export function createArtifactsRepository(db) {
         [a.jobId, a.artifactType, a.formatCode],
       );
       return toArtifact(rows[0]);
+    },
+
+    /** Latest validation result on stitch data, with its report (S6-04). */
+    async setValidation(id, status, reportArtifactId) {
+      await db.execute(
+        `UPDATE design_artifacts SET validation_status = ?, validation_report_artifact_id = ?
+          WHERE id = ? AND artifact_type = 'stitch_data'`,
+        [status, reportArtifactId, id],
+      );
     },
 
     async findById(id) {

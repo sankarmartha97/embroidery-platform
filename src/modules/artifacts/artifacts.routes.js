@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createArtifactsService } from './artifacts.service.js';
 
-export function createArtifactsRouter(deps) {
+export function createArtifactsRouter({ limit, ...deps }) {
   const router = Router();
   const service = createArtifactsService(deps);
 
@@ -9,7 +9,8 @@ export function createArtifactsRouter(deps) {
     res.json(await service.list(req.actor, req.params.id, req.query));
   });
 
-  router.post('/artifacts/:artifactId/download-url', async (req, res) => {
+  // `limit` is the tighter download-URL bucket (SEC-T09).
+  router.post('/artifacts/:artifactId/download-url', limit, async (req, res) => {
     const result = await service.createDownloadUrl(req.actor, req.params.artifactId, {
       ip: req.ip,
       userAgent: req.get('user-agent'),

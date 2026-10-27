@@ -38,6 +38,7 @@ function toResponse(a) {
     engineName: a.engineName,
     engineVersion: a.engineVersion,
     validationStatus: a.validationStatus,
+    validationReportArtifactId: a.validationReportArtifactId,
     createdAt: a.createdAt,
   };
 }

@@ -10,10 +10,11 @@ export const MAX_MACHINES_PER_USER = 10;
 export const HOOP_MIN_MM = 30;
 export const HOOP_MAX_MM = 600;
 
+/** UserMachine (openapi.yaml): `nickname` is a string when set and absent otherwise. */
 function toResponse(m) {
   return {
     id: m.id,
-    nickname: m.nickname,
+    ...(m.nickname ? { nickname: m.nickname } : {}),
     machineBrand: m.machineBrand,
     machineModel: m.machineModel,
     preferredFormat: m.preferredFormat,
