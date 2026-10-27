@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.com/embroidery/project-document/v1.json",
+  "title": "Embroidery project document",
+  "description": "Canonical, engine-neutral editable design document. Schema version 1 (draft). Ranges are starting points pending embroidery-specialist sign-off.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "units", "canvas", "threads", "objects"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "units": { "const": "mm" },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 }
+      }
+    },
+    "machineProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "hoopWidthMm", "hoopHeightMm"],
+      "properties": {
+        "id": { "type": "string" },
+        "format": { "type": "string", "pattern": "^[A-Z0-9]{2,10}$" },
+        "hoopWidthMm": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+        "hoopHeightMm": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 }
+      }
+    },
+    "threads": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "hex"],
+        "properties": {
+          "id": { "$ref": "#/$defs/localId" },
+          "hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "paletteItemId": { "type": "string" }
+        }
+      }
+    },
+    "objects": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": { "$ref": "#/$defs/object" }
+    }
+  },
+  "$defs": {
+    "localId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "point": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "d", "closed"],
+      "properties": {
+        "kind": { "const": "path" },
+        "d": { "type": "string", "minLength": 1, "maxLength": 2000000, "description": "SVG path data in mm" },
+        "closed": { "type": "boolean" }
+      }
+    },
+    "underlay": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["none", "center-walk", "edge-walk", "zigzag", "fill"] }
+    },
+    "runningStitch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "threadId"],
+      "properties": {
+        "type": { "const": "running" },
+        "threadId": { "$ref": "#/$defs/localId" },
+        "stitchLengthMm": { "type": "number", "minimum": 1.0, "maximum": 7.0, "default": 2.5 },
+        "repeats": { "enum": [1, 2, 3], "default": 1 },
+        "bean": { "type": "boolean", "default": false },
+        "startPoint": { "$ref": "#/$defs/point" },
+        "endPoint": { "$ref": "#/$defs/point" },
+        "tieIn": { "type": "boolean", "default": true },
+        "tieOff": { "type": "boolean", "default": true }
+      }
+    },
+    "satinStitch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "threadId"],
+      "properties": {
+        "type": { "const": "satin" },
+        "threadId": { "$ref": "#/$defs/localId" },
+        "densityMm": { "type": "number", "minimum": 0.25, "maximum": 1.0, "default": 0.4 },
+        "underlay": { "$ref": "#/$defs/underlay" },
+        "pullCompensationMm": { "type": "number", "minimum": 0, "maximum": 1.0, "default": 0.2 },
+        "angleDegrees": { "type": "number", "minimum": 0, "exclusiveMaximum": 360 },
+        "startPoint": { "$ref": "#/$defs/point" },
+        "endPoint": { "$ref": "#/$defs/point" },
+        "tieIn": { "type": "boolean", "default": true },
+        "tieOff": { "type": "boolean", "default": true }
+      }
+    },
+    "fillStitch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "threadId"],
+      "properties": {
+        "type": { "const": "fill" },
+        "threadId": { "$ref": "#/$defs/localId" },
+        "densityMm": { "type": "number", "minimum": 0.25, "maximum": 1.0, "default": 0.4 },
+        "stitchLengthMm": { "type": "number", "minimum": 2.0, "maximum": 7.0, "default": 4.0 },
+        "angleDegrees": { "type": "number", "minimum": 0, "maximum": 179, "default": 45 },
+        "underlay": { "$ref": "#/$defs/underlay" },
+        "pullCompensationMm": { "type": "number", "minimum": 0, "maximum": 1.0, "default": 0.2 },
+        "startPoint": { "$ref": "#/$defs/point" },
+        "endPoint": { "$ref": "#/$defs/point" },
+        "tieIn": { "type": "boolean", "default": true },
+        "tieOff": { "type": "boolean", "default": true }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "geometry", "sequence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "type": { "enum": ["embroidery-path", "artwork-path"], "description": "artwork-path = reference only, not stitched" },
+        "name": { "type": "string", "maxLength": 120 },
+        "geometry": { "$ref": "#/$defs/geometry" },
+        "transform": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 6,
+          "maxItems": 6,
+          "description": "2D affine matrix [a, b, c, d, e, f] in mm"
+        },
+        "stitch": {
+          "oneOf": [
+            { "$ref": "#/$defs/runningStitch" },
+            { "$ref": "#/$defs/satinStitch" },
+            { "$ref": "#/$defs/fillStitch" }
+          ]
+        },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "locked": { "type": "boolean", "default": false },
+        "hidden": { "type": "boolean", "default": false }
+      },
+      "if": { "properties": { "type": { "const": "embroidery-path" } } },
+      "then": { "required": ["stitch"] }
+    }
+  }
+}

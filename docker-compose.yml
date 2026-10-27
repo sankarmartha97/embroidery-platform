@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: embroidery
+      MYSQL_USER: emb
+      MYSQL_PASSWORD: emb
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_0900_ai_ci']
+    ports: ['3307:3306']
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-proot']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: sqs,s3
+      AWS_DEFAULT_REGION: eu-west-1
+    ports: ['4566:4566']
+    volumes:
+      - ./docker/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+    healthcheck:
+      test: ['CMD', 'bash', '-c', 'awslocal sqs get-queue-url --queue-name emb-jobs']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mysql-data:

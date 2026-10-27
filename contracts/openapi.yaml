@@ -1,0 +1,649 @@
+openapi: 3.1.0
+info:
+  title: Embroidery Studio API
+  version: 0.1.0-draft
+  description: |
+    Studio, digitizing-job, artifact and publication endpoints.
+    Marketplace catalogue, checkout and subscription endpoints are part of the
+    existing marketplace API and are not repeated here.
+servers:
+  - url: https://api.example.com/api/v1
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Projects
+    description: Design projects, drafts and duplication
+  - name: Versions
+    description: Immutable project versions
+  - name: Jobs
+    description: Digitize, simulate, validate and export jobs
+  - name: Artifacts
+    description: Generated files and authorized downloads
+  - name: Publications
+    description: Rights declarations, submission and moderation
+  - name: Reference
+    description: Machine profiles and supported formats
+
+paths:
+  /design-projects:
+    post:
+      tags: [Projects]
+      summary: Create a project
+      operationId: createProject
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [Projects]
+      summary: List projects visible to the caller (owned or shared)
+      operationId: listProjects
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: scope
+          in: query
+          schema: { type: string, enum: [owned, shared, all], default: all }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ProjectStatus' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: Page of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Project' } }
+                  page: { $ref: '#/components/schemas/PageInfo' }
+
+  /design-projects/{id}:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [Projects]
+      summary: Read project, current draft and caller permissions
+      operationId: getProject
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Projects]
+      summary: Update metadata (title, description, visibility, machine profile)
+      operationId: updateProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/draft:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    put:
+      tags: [Projects]
+      summary: Autosave the mutable draft document (optimistic concurrency)
+      operationId: saveDraft
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: Current draftRevision as a quoted string, e.g. "17"
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectDocument' }
+      responses:
+        '200':
+          description: Saved
+          headers: { ETag: { schema: { type: string } } }
+          content: { application/json: { schema: { type: object, properties: { draftRevision: { type: integer } } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/versions:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Versions]
+      summary: Snapshot the current draft as an immutable version
+      operationId: createVersion
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, maxLength: 120 }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectVersion' } } } }
+        '200': { description: Draft identical to latest version; existing version returned, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectVersion' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [Versions]
+      summary: Version history
+      operationId: listVersions
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ProjectVersion' } }
+                  page: { $ref: '#/components/schemas/PageInfo' }
+
+  /design-projects/{id}/duplicate:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Projects]
+      summary: Duplicate a project from a version (rights are not copied)
+      operationId: duplicateProject
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                versionId: { type: string, format: uuid }
+                title: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+
+  /design-projects/{id}/jobs:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Jobs]
+      summary: Queue a digitize, simulate, validate or export job
+      operationId: createJob
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKeyRequired' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreate' }
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Location: { schema: { type: string }, description: '/digitizing-jobs/{jobId}' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /digitizing-jobs/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Jobs]
+      summary: Job status, progress and user-safe diagnostics
+      operationId: getJob
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /digitizing-jobs/{jobId}/cancel:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Jobs]
+      summary: Request cancellation (best effort for running jobs)
+      operationId: cancelJob
+      responses:
+        '202': { description: Cancellation requested, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/artifacts:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [Artifacts]
+      summary: List artifacts the caller may see
+      operationId: listArtifacts
+      parameters:
+        - { name: versionId, in: query, schema: { type: string, format: uuid } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/ArtifactType' } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Artifact' } }
+
+  /artifacts/{artifactId}/download-url:
+    parameters:
+      - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Artifacts]
+      summary: Authorize a download and issue a short-lived signed URL
+      description: Checks project access or marketplace entitlement. Every decision (allowed or denied) is recorded in design_export_events.
+      operationId: createDownloadUrl
+      responses:
+        '200':
+          description: Signed URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+                  sha256: { type: string }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/rights:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Publications]
+      summary: Add a rights declaration for the design or an asset
+      operationId: declareRights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RightsDeclaration' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '201': { description: Created }
+
+  /design-projects/{id}/submit:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Publications]
+      summary: Submit a version for marketplace review
+      operationId: submitProject
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId, acceptCreatorTerms]
+              properties:
+                versionId: { type: string, format: uuid }
+                acceptCreatorTerms: { type: boolean, const: true }
+      responses:
+        '201': { description: Submitted, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }
+        '422': { description: Missing rights declarations or no passing export, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+
+  /design-publications/{id}/review:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Publications]
+      summary: Moderation decision (staff.moderator)
+      operationId: reviewPublication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject, request_changes] }
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /machine-profiles:
+    get:
+      tags: [Reference]
+      summary: System presets plus the caller's own profiles
+      operationId: listMachineProfiles
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { description: OK }
+
+  /machine-formats:
+    get:
+      tags: [Reference]
+      summary: Supported export formats and their capabilities
+      operationId: listMachineFormats
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { description: OK }
+
+  /me/machines:
+    get:
+      tags: [Reference]
+      summary: The caller's registered machines ("My Machine")
+      operationId: listMyMachines
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/UserMachine' } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Reference]
+      summary: Register a machine
+      operationId: createMyMachine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserMachineCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/UserMachine' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /artifacts/{artifactId}/stitch-outcomes:
+    parameters:
+      - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Artifacts]
+      summary: Report how a downloaded file stitched
+      description: Allowed only for users who downloaded the artifact (or staff). Machine details are copied from userMachineId at report time.
+      operationId: reportStitchOutcome
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StitchOutcomeCreate' }
+      responses:
+        '201': { description: Recorded }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    ProjectId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+    IdempotencyKeyRequired:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, maxLength: 128 }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, correlationId]
+          properties:
+            code: { type: string, examples: [VALIDATION_FAILED, NOT_FOUND, FORBIDDEN, DRAFT_CONFLICT, STITCH_DATA_REQUIRED, RATE_LIMITED, IDEMPOTENCY_KEY_REUSED] }
+            message: { type: string }
+            correlationId: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  path: { type: string }
+                  issue: { type: string }
+
+    PageInfo:
+      type: object
+      properties:
+        nextCursor: { type: [string, 'null'] }
+
+    ProjectStatus: { type: string, enum: [draft, in_review, published, archived] }
+    Visibility: { type: string, enum: [private, shared, marketplace] }
+    ArtifactType: { type: string, enum: [source, stitch_data, preview, machine_file, report] }
+    JobType: { type: string, enum: [digitize, simulate, validate, export] }
+    JobStatus: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+
+    ProjectCreate:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        machineProfileId: { type: string, format: uuid }
+
+    ProjectUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'] }
+        visibility: { type: string, enum: [private, shared], description: "'marketplace' is set only by publication" }
+        machineProfileId: { type: [string, 'null'], format: uuid }
+
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ownerUserId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        status: { $ref: '#/components/schemas/ProjectStatus' }
+        currentVersionId: { type: [string, 'null'], format: uuid }
+        draftRevision: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            draft: { $ref: '#/components/schemas/ProjectDocument' }
+            permissions:
+              type: object
+              properties:
+                canEdit: { type: boolean }
+                canExport: { type: boolean }
+                canSubmit: { type: boolean }
+                canManageCollaborators: { type: boolean }
+
+    ProjectDocument:
+      type: object
+      description: Canonical project document. Full schema in 05-digitizing-engine.
+      required: [schemaVersion, units, canvas, objects]
+      properties:
+        schemaVersion: { type: integer, minimum: 1 }
+        units: { type: string, const: mm }
+        canvas:
+          type: object
+          required: [width, height]
+          properties:
+            width: { type: number, exclusiveMinimum: 0 }
+            height: { type: number, exclusiveMinimum: 0 }
+        machineProfile: { type: object }
+        objects: { type: array, maxItems: 5000, items: { type: object } }
+
+    ProjectVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        versionNumber: { type: integer }
+        documentSchemaVersion: { type: integer }
+        documentSha256: { type: string }
+        label: { type: [string, 'null'] }
+        reason: { type: string }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    JobCreate:
+      type: object
+      required: [jobType, versionId]
+      properties:
+        jobType: { $ref: '#/components/schemas/JobType' }
+        versionId: { type: string, format: uuid }
+        inputArtifactId:
+          type: string
+          format: uuid
+          description: stitch_data artifact. Required for simulate/validate/export unless digitizeIfMissing is true.
+        digitizeIfMissing: { type: boolean, default: false }
+        targetFormat: { type: string, description: Required for export. One of /machine-formats. }
+        machineProfileId: { type: string, format: uuid }
+        settings: { type: object }
+
+    Job:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        jobType: { $ref: '#/components/schemas/JobType' }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        projectVersionId: { type: string, format: uuid }
+        inputArtifactId: { type: [string, 'null'], format: uuid }
+        parentJobId: { type: [string, 'null'], format: uuid }
+        targetFormat: { type: [string, 'null'] }
+        engineName: { type: string }
+        engineVersion: { type: [string, 'null'] }
+        attemptCount: { type: integer }
+        error:
+          type: [object, 'null']
+          properties:
+            code: { type: string }
+            summary: { type: string }
+        outputArtifactIds: { type: array, items: { type: string, format: uuid } }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+
+    Artifact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        projectVersionId: { type: string, format: uuid }
+        jobId: { type: [string, 'null'], format: uuid }
+        artifactType: { $ref: '#/components/schemas/ArtifactType' }
+        formatCode: { type: string }
+        sha256: { type: string }
+        fileSizeBytes: { type: integer }
+        stitchCount: { type: [integer, 'null'] }
+        colorCount: { type: [integer, 'null'] }
+        widthMm: { type: [number, 'null'] }
+        heightMm: { type: [number, 'null'] }
+        engineName: { type: [string, 'null'] }
+        engineVersion: { type: [string, 'null'] }
+        validationStatus: { type: string, enum: [pending, passed, warning, failed] }
+        createdAt: { type: string, format: date-time }
+
+    RightsDeclaration:
+      type: object
+      required: [rightsType]
+      properties:
+        assetId: { type: [string, 'null'], format: uuid }
+        rightsType: { type: string, enum: [owned, licensed, commissioned, public_domain] }
+        rightsHolderName: { type: string }
+        sourceReference: { type: string, maxLength: 500 }
+        licenseTermsVersion: { type: string }
+        commercialUseAllowed: { type: boolean }
+        modificationAllowed: { type: boolean }
+        redistributionAllowed: { type: boolean }
+
+    Publication:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        projectVersionId: { type: string, format: uuid }
+        status: { type: string, enum: [submitted, in_review, changes_requested, approved, rejected, withdrawn, taken_down] }
+        decisionReason: { type: [string, 'null'] }
+        submittedAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+
+    Hoop:
+      type: object
+      required: [name, widthMm, heightMm]
+      properties:
+        name: { type: string, maxLength: 40, examples: ['5x7'] }
+        widthMm: { type: number, exclusiveMinimum: 0 }
+        heightMm: { type: number, exclusiveMinimum: 0 }
+
+    UserMachineCreate:
+      type: object
+      required: [machineBrand, machineModel, preferredFormat, hoops]
+      properties:
+        nickname: { type: string, maxLength: 80 }
+        machineBrand: { type: string, maxLength: 80 }
+        machineModel: { type: string, maxLength: 120 }
+        preferredFormat: { type: string, description: One of /machine-formats }
+        hoops: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/Hoop' } }
+        isDefault: { type: boolean, default: false }
+
+    UserMachine:
+      allOf:
+        - $ref: '#/components/schemas/UserMachineCreate'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            machineProfileId: { type: [string, 'null'], format: uuid }
+
+    StitchOutcomeCreate:
+      type: object
+      required: [outcome]
+      properties:
+        userMachineId: { type: string, format: uuid }
+        outcome: { type: string, enum: [success, minor_issues, failed, did_not_stitch] }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        issueCodes:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [wont_open, too_big_for_hoop, puckering, gaps, thread_breaks, registration, density_too_high, too_many_trims, other] }
+        fabricType: { type: string, enum: [woven_cotton, knit, towel, denim, canvas, cap, felt, leather, other] }
+        stabilizerType: { type: string, enum: [cutaway, tearaway, washaway, heat_away, none, other] }
+        threadBrand: { type: string, maxLength: 80 }
+        threadWeight: { type: string, maxLength: 20 }
+        needle: { type: string, maxLength: 40 }
+        comment: { type: string, maxLength: 2000 }
+        photoUploadIds: { type: array, maxItems: 4, items: { type: string, format: uuid }, description: Ids from the presigned upload flow; never storage paths }
+        photoConsent: { type: string, enum: [private, support_only, public_review], default: private }

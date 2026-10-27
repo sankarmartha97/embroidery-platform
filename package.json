@@ -1,0 +1,42 @@
+{
+  "name": "embroidery-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Embroidery Design Library & Digitizing Platform: API, workers and tools",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "dev:worker": "node --watch --env-file-if-exists=.env workers/main.js",
+    "start": "node src/server.js",
+    "start:worker": "node workers/main.js",
+    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.js",
+    "harness": "node tools/format-harness/cli.js",
+    "contracts:sync": "node tools/sync-contracts.js",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "node --test --test-reporter=spec \"test/unit/**/*.test.js\"",
+    "test:integration": "node --env-file-if-exists=.env.test --test --test-concurrency=1 --test-reporter=spec \"test/integration/**/*.test.js\"",
+    "dev:token": "node --env-file-if-exists=.env tools/dev-token.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "express": "^5.1.0",
+    "jose": "^5.9.6",
+    "mysql2": "^3.11.5",
+    "pino": "^9.5.0",
+    "uuid": "^11.0.3",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "eslint": "^9.16.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "globals": "^15.13.0",
+    "prettier": "^3.4.2"
+  }
+}

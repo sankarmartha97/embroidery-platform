@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: embroidery
+          MYSQL_USER: emb
+          MYSQL_PASSWORD: emb
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+      localstack:
+        image: localstack/localstack:3.8
+        env:
+          SERVICES: sqs,s3
+          AWS_DEFAULT_REGION: eu-west-1
+        ports: ['4566:4566']
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-west-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Lint and format check
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Prepare test database
+        run: |
+          mysql -h 127.0.0.1 -P 3307 -uroot -proot -e "
+            CREATE DATABASE IF NOT EXISTS embroidery_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+            GRANT ALL PRIVILEGES ON embroidery_test.* TO 'emb'@'%'; FLUSH PRIVILEGES;"
+      - name: Prepare queues
+        run: |
+          for i in $(seq 1 30); do aws --endpoint-url http://localhost:4566 sqs list-queues && break; sleep 2; done
+          aws --endpoint-url http://localhost:4566 sqs create-queue --queue-name emb-jobs-dlq
+          aws --endpoint-url http://localhost:4566 sqs create-queue --queue-name emb-jobs
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
