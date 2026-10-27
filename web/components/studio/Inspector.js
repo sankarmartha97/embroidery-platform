@@ -8,6 +8,7 @@ import {
   updateObject,
   updateStitch,
 } from '@/lib/document.js';
+import { parsePenPath } from '@/lib/shapes.js';
 
 const SEVERITY_ORDER = { error: 0, warning: 1 };
 
@@ -41,7 +42,17 @@ export default function Inspector(props) {
   );
 }
 
-function Properties({ document, selectedId, onEdit, canEdit, profiles, profileId, onProfile }) {
+function Properties({
+  document,
+  selectedId,
+  onEdit,
+  canEdit,
+  profiles,
+  profileId,
+  onProfile,
+  editingId,
+  onEditPoints,
+}) {
   const object = document.objects.find((o) => o.id === selectedId);
   if (!object) {
     return (
@@ -207,6 +218,22 @@ function Properties({ document, selectedId, onEdit, canEdit, profiles, profileId
           Locked
         </label>
       </div>
+
+      {parsePenPath(object.geometry.d) && (
+        <button
+          className="btn"
+          disabled={!canEdit || object.locked}
+          aria-pressed={editingId === object.id}
+          onClick={() => onEditPoints(object.id)}
+        >
+          {editingId === object.id ? 'Done editing points' : 'Edit points'}
+        </button>
+      )}
+      <p className="muted small">
+        {object.geometry.closed ? 'Closed path' : 'Open path'}
+        {editingId === object.id &&
+          ': drag the squares to move points and the circles to bend curves.'}
+      </p>
     </section>
   );
 }
