@@ -14,4 +14,9 @@ describe('strictify', () => {
     assert.equal(schema.properties.additionalProperties, undefined);
     assert.equal(schema.additionalProperties, false);
   });
+  it('leaves free-form objects (no declared properties) free-form', () => {
+    const schema = strictify({ $ref: '#/components/schemas/JobCreate' });
+    assert.equal(schema.additionalProperties, false);
+    assert.equal(schema.properties.settings.additionalProperties, undefined);
+  });
 });

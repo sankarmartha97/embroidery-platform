@@ -65,6 +65,14 @@ export function createVersionsRepository(db) {
       return rows.map(toVersion);
     },
 
+    async findById(id) {
+      const [rows] = await db.execute(
+        `SELECT ${COLUMNS} FROM design_project_versions WHERE id = ?`,
+        [id],
+      );
+      return rows[0] ? toVersion(rows[0]) : null;
+    },
+
     /** The version with its document, for workers. */
     async findWithDocument(id) {
       const [rows] = await db.execute(

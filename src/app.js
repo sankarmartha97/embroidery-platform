@@ -4,6 +4,7 @@ import { correlation } from './http/correlation.js';
 import { createErrorHandler, notFoundHandler } from './http/errors.js';
 import { rateLimit } from './http/rate-limit.js';
 import { createHealthRouter } from './modules/health/index.js';
+import { createJobsRouter } from './modules/jobs/index.js';
 import { createMachinesRouter } from './modules/machines/index.js';
 import { createProjectsRouter } from './modules/projects/index.js';
 import { createReferenceRouter } from './modules/reference/index.js';
@@ -12,7 +13,7 @@ const DOCUMENT_ROUTE = /^\/design-projects\/[^/]+\/draft$/;
 
 /**
  * Express app factory (no listen). Dependencies are injected so tests can supply their own.
- * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max }, allowUngatedFormats: boolean }} deps
+ * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max }, allowUngatedFormats: boolean, engineName: string }} deps
  */
 export function createApp(deps) {
   const { db, logger, verifyToken, rolesProvider } = deps;
@@ -38,6 +39,13 @@ export function createApp(deps) {
   api.use(createReferenceRouter({ db, allowUngatedFormats: deps.allowUngatedFormats }));
   api.use(createMachinesRouter({ db }));
   api.use(createProjectsRouter({ db }));
+  api.use(
+    createJobsRouter({
+      db,
+      engineName: deps.engineName,
+      allowUngatedFormats: deps.allowUngatedFormats,
+    }),
+  );
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

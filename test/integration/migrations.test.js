@@ -17,7 +17,13 @@ describe('migrations', () => {
   after(() => pool.end());
 
   it('builds the full schema from an empty database', async () => {
-    assert.equal(firstRun.applied.length, 3);
+    assert.equal(firstRun.applied.length, 4);
+    const [[column]] = await pool.query(
+      `SELECT is_nullable AS n FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'digitizing_jobs'
+          AND column_name = 'request_sha256'`,
+    );
+    assert.equal(column.n, 'YES', 'request_sha256 added as a nullable column');
     const [tables] = await pool.query(
       `SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()`,
     );

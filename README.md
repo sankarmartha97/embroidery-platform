@@ -2,7 +2,7 @@
 
 API, workers and QA tools for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** sprint S3. The API serves health, reference data, "My Machine" and projects (create, list, read, update, draft autosave with `If-Match`, immutable versions). The worker runs digitize, validate and export jobs end to end with a deterministic test engine, storing verified artifacts in S3. The jobs API (create, get, cancel) and the stuck-job reconciler come next (S4).
+**Status:** sprint S4. The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions) and jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Artifact listing and download URLs come next (S5).
 
 ## Quick start
 
@@ -31,16 +31,17 @@ The `users` table is a local stub. In real environments it belongs to the existi
 
 ## Scripts
 
-| Script                                 | What it does                                                                       |
-| -------------------------------------- | ---------------------------------------------------------------------------------- |
-| `npm run dev` / `npm run dev:worker`   | API / worker with file watching                                                    |
-| `npm run db:migrate`                   | Applies `migrations/*.sql` in order; refuses if an applied file changed            |
-| `npm test`                             | Unit tests (no database)                                                           |
-| `npm run test:integration`             | Integration tests against real MySQL and LocalStack (`docker compose up -d` first) |
-| `npm run lint`                         | ESLint (including the module-boundary and env rules) and Prettier check            |
-| `npm run harness -- file.dst file.jef` | Independent format parser: stitches, jumps, colours, extents, header checks        |
-| `npm run dev:token`                    | Local stand-in for marketplace auth                                                |
-| `npm run contracts:sync`               | Copies `openapi.yaml` and the document JSON Schema from the docs repo              |
+| Script                                 | What it does                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `npm run dev` / `npm run dev:worker`   | API / worker with file watching                                                      |
+| `npm run db:migrate`                   | Applies `migrations/*.sql` in order; refuses if an applied file changed              |
+| `npm test`                             | Unit tests (no database)                                                             |
+| `npm run test:integration`             | Integration tests against real MySQL and LocalStack (`docker compose up -d` first)   |
+| `npm run lint`                         | ESLint (including the module-boundary and env rules) and Prettier check              |
+| `npm run harness -- file.dst file.jef` | Independent format parser: stitches, jumps, colours, extents, header checks          |
+| `npm run dev:token`                    | Local stand-in for marketplace auth                                                  |
+| `npm run contracts:sync`               | Copies `openapi.yaml` and the document JSON Schema from the docs repo                |
+| `npm run reconcile`                    | One stuck-job reconcile pass (a scheduled task every 5 minutes in real environments) |
 
 ## Layout
 
@@ -59,6 +60,7 @@ workers/
   main.js consumer.js        SQS consumer loop + relay
   job-runner.js              claim, heartbeat, cancel, timeout, upload, retry/fail (S3-04)
   job-errors.js              job error codes, retry policy, user-safe summaries
+  reconciler.js reconcile.js stuck-job reconciler (S4-03) and its scheduled entry point
   handlers/                  message type → handler; digitize / validate / export / simulate
   engines/                   DigitizingEngine interface · fake/ (deterministic test engine)
 tools/format-harness/        independent DST/JEF readers (QA)
@@ -99,13 +101,26 @@ Not started (other owners or blocked): S1-02/S2-10 document schema sign-off, S1-
 
 Not done in S3: S3-01/S3-11 real engine mapping (blocked on Gate 1), S3-02 IaC, S3-05/S3-06 drawing tools and S3-09 Playwright (need the web app), S3-08 golden corpus runner.
 
+## Sprint S4: what's done
+
+| Task                                                                            | Status            | Evidence                                                                                                                                                                 |
+| ------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| S4-02 Jobs API: create (idempotency), get, cancel, `digitizeIfMissing` chaining | Done              | IT-07, IT-08, IT-11, IT-12 green, plus replay, per-user keys, concurrent same-key requests, 422 rules and the authorization matrix (`test/integration/jobs-api.test.js`) |
+| S4-03 Reconciler for stuck jobs                                                 | Done (stuck jobs) | IT-03 green: requeue with a fresh message, attempt 2 succeeds; fails after `max_attempts`; deadline check; leader lock                                                   |
+| S4-06 IT-01…IT-05 complete                                                      | Done              | IT-01 (job + outbox in one transaction, sent once), IT-02, IT-03, IT-04, IT-05 (DLQ after max receives, on LocalStack)                                                   |
+
+Schema change: migration `202612140900__job_request_fingerprint.sql` adds `digitizing_jobs.request_sha256`, so a reused key with a different body can be detected. It was added to the docs repository first and copied here.
+
+Not done in S4: S4-01/S4-07 real engine adapter and stitch-outs (blocked on Gate 1), S4-04/S4-05 autosave UI and properties panel (need the web app).
+
 ## Known limits
 
 - **FakeEngine is not a production engine.** It turns every object into running stitches, and its DST/JEF writers have not passed the [production enablement gate](../embroidery-platform-docs/05-digitizing-engine/format-support.md#production-enablement-gate). Every format is `productionEnabled: false`.
 - **Roles** come from `DEV_ROLE_ASSIGNMENTS` until the marketplace role source is connected (A5). Production refuses non-empty assignments.
 - **Rate limits** are per API task (in memory). Fleet-wide limits belong at the edge (WAF).
-- **No jobs API yet** (S4-02). Jobs are created through the repository in tests; `Idempotency-Key` on job creation arrives with it. The optional `Idempotency-Key` on project and version POSTs is accepted but not stored: the schema has no table for it (version snapshots are already deduplicated by SHA-256).
-- **No reconciler yet** (S4-03). A job whose worker dies stays `running` until it exists; the worker side is ready (updates are fenced on the attempt number).
+- **Idempotency on other POSTs:** the optional `Idempotency-Key` on project and version creation is accepted but not stored (no table for it; version snapshots are already deduplicated by SHA-256). Job creation, where it is required, is fully idempotent.
+- **Job rate limits** (a tighter bucket for job creation) are S6-06; job creation uses the general per-user limit for now.
+- **The reconciler handles stuck jobs only.** Orphaned S3 objects and outbox lag (also its job in 09-devops) are not done yet. The alarm on DLQ depth is CloudWatch infrastructure.
 - **Simulate** calls `renderSimulation` expecting `{ buffer, formatCode }`; that shape is provisional until the real engine is chosen. FakeEngine does not render, so simulate jobs fail with `UNSUPPORTED_STITCH_TYPE`.
-- **Interpretations to confirm:** only the owner may change `visibility` (sharing is the owner's call); archived projects are read-only (409); a missing `If-Match` is 400.
+- **Interpretations to confirm:** only the owner may change `visibility` (sharing is the owner's call); archived projects are read-only (409); a missing `If-Match` or `Idempotency-Key` is 400. For jobs: `inputArtifactId` is required for simulate/validate/export unless `digitizeIfMissing` is true, which reuses the version's newest stitch data or chains a digitize job; a chained job ends with its parent's error or cancellation; the requester or anyone who can edit the project may cancel; a crashed worker is reported as `ENGINE_TIMEOUT`; retryable codes get a "try again later" summary on their final failure, because the table's text says "retrying".
 - Numbers such as the 10-machine limit and 30–600 mm hoop range are placeholders from the [feature specifications](../embroidery-platform-docs/01-product/feature-specifications.md).

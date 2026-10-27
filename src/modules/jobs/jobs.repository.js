@@ -8,7 +8,7 @@ const COLUMNS = `j.id, j.project_version_id, j.input_artifact_id, j.parent_job_i
   j.engine_name, j.engine_version, j.job_type, j.target_format, j.machine_profile_id,
   j.machine_profile_json, j.settings_json, j.status, j.cancel_requested, j.progress,
   j.attempt_count, j.max_attempts, j.idempotency_key, j.error_code, j.error_summary,
-  j.heartbeat_at, j.deadline_at, j.started_at, j.finished_at, j.created_at`;
+  j.request_sha256, j.heartbeat_at, j.deadline_at, j.started_at, j.finished_at, j.created_at`;
 
 const parseJson = (v) =>
   v === null || v === undefined ? null : typeof v === 'string' ? JSON.parse(v) : v;
@@ -34,6 +34,7 @@ function toJob(row) {
     attemptCount: row.attempt_count,
     maxAttempts: row.max_attempts,
     idempotencyKey: row.idempotency_key,
+    requestSha256: row.request_sha256,
     errorCode: row.error_code,
     errorSummary: row.error_summary,
     heartbeatAt: row.heartbeat_at,
@@ -80,8 +81,8 @@ export function createJobsRepository(db) {
         `INSERT INTO digitizing_jobs
            (id, project_version_id, input_artifact_id, parent_job_id, requested_by, engine_name,
             job_type, target_format, machine_profile_id, machine_profile_json, settings_json,
-            max_attempts, idempotency_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            max_attempts, idempotency_key, request_sha256)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           job.id,
           job.projectVersionId,
@@ -96,6 +97,7 @@ export function createJobsRepository(db) {
           job.settings ? JSON.stringify(job.settings) : null,
           job.maxAttempts ?? 3,
           job.idempotencyKey,
+          job.requestSha256 ?? null,
         ],
       );
       await addEvent({ jobId: job.id, toStatus: 'queued', attempt: 0 });
@@ -260,6 +262,80 @@ export function createJobsRepository(db) {
         workerId,
       });
       return true;
+    },
+
+    /** The caller's job created with this Idempotency-Key, or null (keys are per user). */
+    async findByIdempotencyKey(userId, key) {
+      const [rows] = await db.execute(
+        `SELECT ${COLUMNS}, v.project_id
+           FROM digitizing_jobs j
+           JOIN design_project_versions v ON v.id = j.project_version_id
+          WHERE j.requested_by = ? AND j.idempotency_key = ?`,
+        [userId, key],
+      );
+      return rows[0] ? toJob(rows[0]) : null;
+    },
+
+    /** Jobs chained on `parentId` (digitizeIfMissing) that are still waiting for it. */
+    async listWaitingChildren(parentId) {
+      const [rows] = await db.execute(
+        `SELECT id FROM digitizing_jobs
+          WHERE parent_job_id = ? AND status = 'queued' AND input_artifact_id IS NULL
+          FOR UPDATE`,
+        [parentId],
+      );
+      return rows.map((r) => r.id);
+    },
+
+    async setInputArtifact(id, artifactId) {
+      await db.execute(
+        `UPDATE digitizing_jobs SET input_artifact_id = ?
+          WHERE id = ? AND status = 'queued' AND input_artifact_id IS NULL`,
+        [artifactId, id],
+      );
+    },
+
+    /** Ends a queued job that will never run (its parent failed or was cancelled). */
+    async closeQueued(id, { status, code, summary, message, workerId }) {
+      const [res] = await db.execute(
+        `UPDATE digitizing_jobs
+            SET status = ?, error_code = ?, error_summary = ?, finished_at = CURRENT_TIMESTAMP(3)
+          WHERE id = ? AND status = 'queued'`,
+        [status, code, summary, id],
+      );
+      if (res.affectedRows === 1) {
+        await addEvent({
+          jobId: id,
+          fromStatus: 'queued',
+          toStatus: status,
+          attempt: 0,
+          errorCode: code,
+          message,
+          workerId,
+        });
+      }
+      return res.affectedRows === 1;
+    },
+
+    /**
+     * Running jobs whose worker looks dead: heartbeat older than `staleMs`, or past the deadline.
+     * @returns {Promise<{ id: string, attemptCount: number, maxAttempts: number }[]>}
+     */
+    async listStuck(staleMs, limit = 100) {
+      const [rows] = await db.execute(
+        `SELECT id, attempt_count, max_attempts FROM digitizing_jobs
+          WHERE status = 'running'
+            AND (heartbeat_at < CURRENT_TIMESTAMP(3) - INTERVAL ? MICROSECOND
+                 OR deadline_at < CURRENT_TIMESTAMP(3))
+          ORDER BY heartbeat_at
+          LIMIT ${Number(limit)}`,
+        [staleMs * 1000],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        attemptCount: r.attempt_count,
+        maxAttempts: r.max_attempts,
+      }));
     },
 
     async requestCancel(id) {

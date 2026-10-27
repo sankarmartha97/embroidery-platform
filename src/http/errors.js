@@ -24,11 +24,23 @@ export const errors = {
       'The draft was changed elsewhere. Reload it before saving again.',
       [{ path: '/If-Match', issue: `current draftRevision is ${currentRevision}` }],
     ),
+  stitchDataRequired: () =>
+    new AppError(
+      'STITCH_DATA_REQUIRED',
+      409,
+      'This version has no stitch data yet. Digitize it first or set digitizeIfMissing.',
+    ),
+  idempotencyKeyReused: () =>
+    new AppError(
+      'IDEMPOTENCY_KEY_REUSED',
+      409,
+      'This Idempotency-Key was already used with a different request.',
+    ),
   validation: (details, message = 'Request validation failed.') =>
     new AppError('VALIDATION_FAILED', 422, message, details),
-  unsupportedFormat: (format) =>
+  unsupportedFormat: (format, path = '/preferredFormat') =>
     new AppError('UNSUPPORTED_FORMAT', 422, `Format ${format} is not supported.`, [
-      { path: '/preferredFormat', issue: 'must be one of /machine-formats' },
+      { path, issue: 'must be one of /machine-formats' },
     ]),
   rateLimited: () => new AppError('RATE_LIMITED', 429, 'Too many requests. Try again later.'),
 };

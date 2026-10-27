@@ -67,10 +67,15 @@ export const env = Object.freeze({
   SQS_QUEUE_URL_EMB_JOBS: str('SQS_QUEUE_URL_EMB_JOBS'),
   S3_BUCKET_ARTIFACTS: str('S3_BUCKET_ARTIFACTS'),
 
+  // Name recorded on new jobs; the worker's engine must match (ADR-0005: 'fake' until Gate 1).
+  DIGITIZING_ENGINE: str('DIGITIZING_ENGINE', { fallback: 'fake' }),
+
   // Worker: wall-time limit per job attempt, heartbeat interval, and an id for job events.
   JOB_TIMEOUT_MS: int('JOB_TIMEOUT_MS', 600_000),
   JOB_HEARTBEAT_MS: int('JOB_HEARTBEAT_MS', 15_000),
   WORKER_ID: str('WORKER_ID'),
+  // Reconciler: a running job whose heartbeat is older than this is treated as stuck.
+  RECONCILER_STALE_MS: int('RECONCILER_STALE_MS', 120_000),
 
   FORMATS_ALLOW_UNGATED: bool('FORMATS_ALLOW_UNGATED', false),
 });
