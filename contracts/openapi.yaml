@@ -282,6 +282,39 @@ paths:
         '304': { description: Not modified }
         '404': { $ref: '#/components/responses/Error' }
 
+  /artifacts/{artifactId}/report:
+    parameters:
+      - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Artifacts]
+      summary: Validation report for the Studio's issues panel (project readers only)
+      description: Serves a report artifact as JSON. Immutable, so the ETag is the content SHA-256. Not a download; no export event.
+      operationId: getReport
+      responses:
+        '200':
+          description: Validation report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, issues]
+                properties:
+                  status: { type: string, enum: [passed, warning, failed] }
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, severity]
+                      properties:
+                        code: { type: string, examples: [OUT_OF_HOOP, MISSING_TRIM] }
+                        severity: { type: string, enum: [error, warning] }
+                        count: { type: integer }
+                        objectIds: { type: array, items: { type: string } }
+                        message: { type: string }
+                  machineProfile: { type: object }
+        '304': { description: Not modified }
+        '404': { $ref: '#/components/responses/Error' }
+
   /design-projects/{id}/rights:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
     post:

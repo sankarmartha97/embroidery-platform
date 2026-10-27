@@ -3,7 +3,8 @@ import globals from 'globals';
 import promise from 'eslint-plugin-promise';
 
 export default [
-  { ignores: ['node_modules/', 'coverage/', 'tmp/'] },
+  // web/ is a separate package with its own lint config.
+  { ignores: ['node_modules/', 'coverage/', 'tmp/', 'web/'] },
   js.configs.recommended,
   promise.configs['flat/recommended'],
   {

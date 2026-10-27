@@ -37,6 +37,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - run: npm ci
       - name: Lint and format check
         run: npm run lint
@@ -57,3 +60,32 @@ jobs:
         run: npm run test:integration
       - name: Dependency audit
         run: npm audit --omit=dev --audit-level=high
+      - name: Web - install, lint, unit tests, build
+        working-directory: web
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+          npm audit --omit=dev --audit-level=high
+      - name: E2E - start API, worker and web
+        run: |
+          # Local dev settings plus a dev signing key and the designer role for the dev user.
+          grep -v -E '^(AUTH_JWT_PUBLIC_KEY|AUTH_JWT_ALGORITHMS|DEV_ROLE_ASSIGNMENTS)=' .env.example > .env
+          npm run -s dev:token -- --setup | grep '^AUTH_JWT' >> .env
+          echo 'DEV_ROLE_ASSIGNMENTS={"0190f0a0-0000-7000-8000-00000000de11":["designer"]}' >> .env
+          npm run db:migrate
+          mysql -h 127.0.0.1 -P 3307 -uemb -pemb embroidery \
+            -e "INSERT IGNORE INTO users (id) VALUES ('0190f0a0-0000-7000-8000-00000000de11')"
+          nohup node --env-file=.env src/server.js > api.log 2>&1 &
+          nohup node --env-file=.env workers/main.js > worker.log 2>&1 &
+          (cd web && API_ORIGIN=http://127.0.0.1:3000 NEXT_TELEMETRY_DISABLED=1 nohup npx next dev -p 3001 > ../web.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf localhost:3000/ready && curl -sf -o /dev/null localhost:3001/sign-in && break; sleep 2; done
+      - name: E2E - Playwright
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          E2E_TOKEN=$(cd .. && npm run -s dev:token) npm run e2e
+      - name: E2E - logs on failure
+        if: failure()
+        run: tail -n 100 api.log worker.log web.log || true

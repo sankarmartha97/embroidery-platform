@@ -83,6 +83,7 @@ describe('IDOR matrix', () => {
       `/artifacts/${ids.artifact}/download-url`,
     ],
     ['GET /artifacts/{artifactId}/stitch-data', 'GET', `/artifacts/${ids.artifact}/stitch-data`],
+    ['GET /artifacts/{artifactId}/report', 'GET', `/artifacts/${ids.report}/report`],
   ];
 
   before(async () => {
@@ -126,6 +127,23 @@ describe('IDOR matrix', () => {
     });
     await runner.run(job.id, { log: pino({ level: 'silent' }) });
     const finished = JSON.parse((await call(ALICE, 'GET', `/digitizing-jobs/${job.id}`)).body);
+    const validate = JSON.parse(
+      (
+        await call(ALICE, 'POST', `/design-projects/${project.id}/jobs`, {
+          body: {
+            jobType: 'validate',
+            versionId: version.id,
+            inputArtifactId: finished.outputArtifactIds[0],
+            machineProfileId: '00000000-0000-7000-8000-000000000101',
+          },
+          headers: { 'Idempotency-Key': 'validate' },
+        })
+      ).body,
+    );
+    await runner.run(validate.id, { log: pino({ level: 'silent' }) });
+    const validated = JSON.parse(
+      (await call(ALICE, 'GET', `/digitizing-jobs/${validate.id}`)).body,
+    );
     const queuedJob = await createJob('queued');
     ids = {
       project: project.id,
@@ -133,6 +151,7 @@ describe('IDOR matrix', () => {
       job: job.id,
       queuedJob: queuedJob.id,
       artifact: finished.outputArtifactIds[0],
+      report: validated.outputArtifactIds[0],
     };
     // Bob has his own project, so his lists are not trivially empty.
     await call(BOB, 'POST', '/design-projects', { body: { title: 'Bob’s' } });

@@ -200,6 +200,30 @@ describe('API contract', () => {
       `/artifacts/${stitchData.id}/stitch-data`,
       200,
     );
+
+    const validateJob = await expectContract(
+      '/design-projects/{id}/jobs',
+      'POST',
+      `/design-projects/${id}/jobs`,
+      202,
+      {
+        body: { jobType: 'validate', versionId: version.id, inputArtifactId: stitchData.id },
+        headers: { 'Idempotency-Key': 'contract-validate' },
+      },
+    );
+    await runner.run(validateJob.id, silent);
+    const validated = await expectContract(
+      '/digitizing-jobs/{jobId}',
+      'GET',
+      `/digitizing-jobs/${validateJob.id}`,
+      200,
+    );
+    await expectContract(
+      '/artifacts/{artifactId}/report',
+      'GET',
+      `/artifacts/${validated.outputArtifactIds[0]}/report`,
+      200,
+    );
   });
 
   it('errors match the error envelope', async () => {

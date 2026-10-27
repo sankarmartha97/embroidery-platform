@@ -150,14 +150,17 @@ export function createArtifactsService({ db, store, entitlements, ttlSeconds, ip
       return { url, expiresAt, sha256: artifact.sha256 };
     },
 
-    /** Stitch data for the Studio simulator (S5-06): gzip JSON, project readers only. */
-    async stitchData(actor, artifactId) {
+    /**
+     * Raw content for the Studio, project readers only: stitch data (gzip JSON, S5-06) for the
+     * simulator, or a validation report (JSON) for the issues panel. Not a download.
+     */
+    async content(actor, artifactId, artifactType) {
       const { artifact, version } = await loadArtifact(artifactId);
-      if (artifact.artifactType !== 'stitch_data') throw errors.notFound();
+      if (artifact.artifactType !== artifactType) throw errors.notFound();
       await loadReadableProject(db, actor, version.projectId);
       const body = await store.get(artifact.storageKey);
       if (sha256(body) !== artifact.sha256) {
-        throw new Error(`stitch data checksum mismatch for artifact ${artifact.id}`);
+        throw new Error(`checksum mismatch for artifact ${artifact.id}`);
       }
       return { body, sha256: artifact.sha256 };
     },
