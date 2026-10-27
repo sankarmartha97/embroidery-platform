@@ -30,7 +30,7 @@ function checkHoops(hoops) {
       if (hoop[side] < HOOP_MIN_MM || hoop[side] > HOOP_MAX_MM) {
         details.push({
           path: `/hoops/${i}/${side}`,
-          message: `must be between ${HOOP_MIN_MM} and ${HOOP_MAX_MM} mm`,
+          issue: `must be between ${HOOP_MIN_MM} and ${HOOP_MAX_MM} mm`,
         });
       }
     }
@@ -60,7 +60,7 @@ export function createMachinesService({ db }) {
             [
               {
                 path: '/',
-                message: `a user can register at most ${MAX_MACHINES_PER_USER} machines`,
+                issue: `a user can register at most ${MAX_MACHINES_PER_USER} machines`,
               },
             ],
             'Machine limit reached.',

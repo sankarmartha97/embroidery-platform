@@ -1,3 +1,4 @@
+import { applyTransform, parsePath } from '../../../src/lib/document/svg-path.js';
 import { DigitizingEngine, EngineError, throwIfAborted } from '../digitizing-engine.js';
 import { writeDst } from './dst-writer.js';
 import { writeJef } from './jef-writer.js';
@@ -14,7 +15,7 @@ export class FakeEngine extends DigitizingEngine {
   describe() {
     return {
       name: 'fake',
-      version: '0.1.0',
+      version: '0.2.0',
       formats: ['DST', 'JEF'],
       stitchTypes: ['running', 'satin', 'fill'],
     };
@@ -118,17 +119,17 @@ export class FakeEngine extends DigitizingEngine {
   }
 }
 
-/** Absolute coordinate pairs from SVG path data, with the object's transform applied. */
+/**
+ * Points along the object's path in mm, with its transform applied. Uses the same path parser as
+ * the document validator; closed subpaths return to their start. Subpaths are joined in order.
+ */
 function pathPoints(object) {
-  const nums = (object.geometry.d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(Number);
-  const [a, b, c, d, e, f] = object.transform ?? [1, 0, 0, 1, 0, 0];
   const points = [];
-  for (let i = 0; i + 1 < nums.length; i += 2) {
-    const x = nums[i];
-    const y = nums[i + 1];
-    points.push([a * x + c * y + e, b * x + d * y + f]);
+  for (const subpath of parsePath(object.geometry.d).subpaths) {
+    const pts = subpath.points.map((p) => applyTransform(p, object.transform));
+    if ((subpath.closed || object.geometry.closed) && pts.length > 1) pts.push(pts[0]);
+    points.push(...pts);
   }
-  if (object.geometry.closed && points.length > 1) points.push(points[0]);
   return points;
 }
 

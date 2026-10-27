@@ -5,7 +5,10 @@ import { createErrorHandler, notFoundHandler } from './http/errors.js';
 import { rateLimit } from './http/rate-limit.js';
 import { createHealthRouter } from './modules/health/index.js';
 import { createMachinesRouter } from './modules/machines/index.js';
+import { createProjectsRouter } from './modules/projects/index.js';
 import { createReferenceRouter } from './modules/reference/index.js';
+
+const DOCUMENT_ROUTE = /^\/design-projects\/[^/]+\/draft$/;
 
 /**
  * Express app factory (no listen). Dependencies are injected so tests can supply their own.
@@ -18,7 +21,6 @@ export function createApp(deps) {
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind the load balancer
   app.use(correlation(logger));
-  app.use(express.json({ limit: '1mb' }));
 
   app.use(createHealthRouter({ db }));
 
@@ -26,8 +28,16 @@ export function createApp(deps) {
   api.use(rateLimit({ ...deps.rateLimit, keyPrefix: 'anon' }));
   api.use(authenticate({ verifyToken, rolesProvider }));
   api.use(rateLimit({ ...deps.rateLimit, keyPrefix: 'user' }));
+  // Bodies are parsed only after authentication. Project documents may be up to 10 MB
+  // (07-security-licensing/input-handling.md); every other body is limited to 1 MB.
+  const jsonDocument = express.json({ limit: '10mb' });
+  const jsonDefault = express.json({ limit: '1mb' });
+  api.use((req, res, next) =>
+    (DOCUMENT_ROUTE.test(req.path) ? jsonDocument : jsonDefault)(req, res, next),
+  );
   api.use(createReferenceRouter({ db, allowUngatedFormats: deps.allowUngatedFormats }));
   api.use(createMachinesRouter({ db }));
+  api.use(createProjectsRouter({ db }));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

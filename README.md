@@ -2,7 +2,7 @@
 
 API, workers and QA tools for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** foundations sprint (S1–S2). The API serves health, reference data and "My Machine". The outbox, queue and worker pipeline runs end to end with a deterministic test engine. Projects, jobs and artifacts come next (S3).
+**Status:** sprint S3. The API serves health, reference data, "My Machine" and projects (create, list, read, update, draft autosave with `If-Match`, immutable versions). The worker runs digitize, validate and export jobs end to end with a deterministic test engine, storing verified artifacts in S3. The jobs API (create, get, cancel) and the stuck-job reconciler come next (S4).
 
 ## Quick start
 
@@ -51,11 +51,15 @@ src/
   db/                        pool, transactions, forward-only migrator
   http/                      auth (JWT), correlation id, error envelope, validation (OpenAPI), rate limit
   modules/<name>/            routes · service · repository · policy · index.js (public surface)
-    health/ identity/ reference/ machines/ projects/ (policy only)
+    health/ identity/ reference/ machines/ projects/ jobs/ artifacts/ (repositories only)
+  lib/document/              project document validator (S2-15), SVG path parser, canonical hash
   outbox/                    transactional outbox repository, leader-locked relay, publishers
+  aws/                       SQS client, S3 artifact store (re-reads and verifies SHA-256)
 workers/
   main.js consumer.js        SQS consumer loop + relay
-  handlers/                  message type → handler
+  job-runner.js              claim, heartbeat, cancel, timeout, upload, retry/fail (S3-04)
+  job-errors.js              job error codes, retry policy, user-safe summaries
+  handlers/                  message type → handler; digitize / validate / export / simulate
   engines/                   DigitizingEngine interface · fake/ (deterministic test engine)
 tools/format-harness/        independent DST/JEF readers (QA)
 migrations/                  copied from the docs repo; never edit an applied migration
@@ -82,11 +86,26 @@ Rules enforced in code review and by ESLint: code outside `modules/<x>/` imports
 | S2-14 Outbox table + relay (leader lock)                                        | Done                     | Outbox → SQS → consumer integration test                                                                    |
 | Extra: "My Machine" API (`/me/machines`)                                        | Done                     | End-to-end tests on real MySQL                                                                              |
 
-Not started (other owners or blocked): S1-02/S2-10 document schema sign-off, S1-04/S1-06 engine POC, S1-07 marketplace schema (OQ-03/OQ-04), S1-11/S1-12 web app and canvas, S2-15 server-side document validator.
+Not started (other owners or blocked): S1-02/S2-10 document schema sign-off, S1-04/S1-06 engine POC, S1-07 marketplace schema (OQ-03/OQ-04), S1-11/S1-12 web app and canvas.
+
+## Sprint S3: what's done
+
+| Task                                                                     | Status                 | Evidence                                                                                                                                                                    |
+| ------------------------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S2-15 Server-side document validator                                     | Done                   | Schema + unique ids + thread references + path parsing + closed-path rules + canvas bounds (after transform, along curves) + 200k point limit. `test/unit/document.test.js` |
+| S3-03 Projects API: CRUD, autosave (If-Match), versions, snapshot dedupe | Done (duplicate is S7) | IT-09 and IT-10 green; concurrent saves → one 200 + one 409; concurrent snapshots → one version                                                                             |
+| S3-04 Worker loop: receive, claim, heartbeat, cancel check               | Done                   | FakeEngine job runs outbox → SQS → worker → S3. IT-02, IT-04, IT-06, IT-11 green, plus retries, timeout and lost-ownership tests                                            |
+| S3-07 Integration tests: projects and versions                           | Done                   | `test/integration/projects.test.js` (22 tests)                                                                                                                              |
+
+Not done in S3: S3-01/S3-11 real engine mapping (blocked on Gate 1), S3-02 IaC, S3-05/S3-06 drawing tools and S3-09 Playwright (need the web app), S3-08 golden corpus runner.
 
 ## Known limits
 
 - **FakeEngine is not a production engine.** It turns every object into running stitches, and its DST/JEF writers have not passed the [production enablement gate](../embroidery-platform-docs/05-digitizing-engine/format-support.md#production-enablement-gate). Every format is `productionEnabled: false`.
 - **Roles** come from `DEV_ROLE_ASSIGNMENTS` until the marketplace role source is connected (A5). Production refuses non-empty assignments.
 - **Rate limits** are per API task (in memory). Fleet-wide limits belong at the edge (WAF).
+- **No jobs API yet** (S4-02). Jobs are created through the repository in tests; `Idempotency-Key` on job creation arrives with it. The optional `Idempotency-Key` on project and version POSTs is accepted but not stored: the schema has no table for it (version snapshots are already deduplicated by SHA-256).
+- **No reconciler yet** (S4-03). A job whose worker dies stays `running` until it exists; the worker side is ready (updates are fenced on the attempt number).
+- **Simulate** calls `renderSimulation` expecting `{ buffer, formatCode }`; that shape is provisional until the real engine is chosen. FakeEngine does not render, so simulate jobs fail with `UNSUPPORTED_STITCH_TYPE`.
+- **Interpretations to confirm:** only the owner may change `visibility` (sharing is the owner's call); archived projects are read-only (409); a missing `If-Match` is 400.
 - Numbers such as the 10-machine limit and 30–600 mm hoop range are placeholders from the [feature specifications](../embroidery-platform-docs/01-product/feature-specifications.md).

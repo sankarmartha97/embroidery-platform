@@ -1,10 +1,25 @@
-import { DeleteMessageCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
+import {
+  ChangeMessageVisibilityCommand,
+  DeleteMessageCommand,
+  ReceiveMessageCommand,
+} from '@aws-sdk/client-sqs';
+
+/** Thrown by a handler to leave the message on the queue and redeliver it after a delay. */
+export class RetryLater extends Error {
+  constructor(delaySeconds, reason) {
+    super(`retry in ${delaySeconds}s: ${reason}`);
+    this.name = 'RetryLater';
+    this.delaySeconds = delaySeconds;
+  }
+}
 
 /**
  * SQS consumer loop. A message is deleted only after its handler succeeds. Failures and
  * unknown message types are left on the queue: SQS retries them after the visibility timeout
  * and moves them to the dead-letter queue after maxReceiveCount (set on the queue).
  * Handlers must be idempotent: delivery is at-least-once.
+ * Handlers get { log, signal, extendVisibility(seconds) }; long jobs extend visibility from their
+ * heartbeat. Throwing RetryLater sets the redelivery delay instead of waiting for the timeout.
  */
 export function createConsumer({
   client,
@@ -35,10 +50,25 @@ export function createConsumer({
       log.error('no handler for message type; left for the DLQ');
       return false;
     }
+    const extendVisibility = (seconds) =>
+      client.send(
+        new ChangeMessageVisibilityCommand({
+          QueueUrl: queueUrl,
+          ReceiptHandle: message.ReceiptHandle,
+          VisibilityTimeout: seconds,
+        }),
+      );
     try {
-      await handler(body, { log, signal: controller.signal });
+      await handler(body, { log, signal: controller.signal, extendVisibility });
       return true;
     } catch (err) {
+      if (err instanceof RetryLater) {
+        log.warn({ delaySeconds: err.delaySeconds }, err.message);
+        await extendVisibility(err.delaySeconds).catch((e) =>
+          log.warn({ err: e }, 'could not set the retry delay; the visibility timeout applies'),
+        );
+        return false;
+      }
       log.error({ err }, 'handler failed; message will be retried');
       return false;
     }

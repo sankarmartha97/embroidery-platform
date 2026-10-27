@@ -4,8 +4,10 @@ import { describe, it } from 'node:test';
 import {
   canCreateExport,
   canCreateJob,
+  canCreateProject,
   canDownloadArtifact,
   canEditDraft,
+  canManageCollaborators,
   canManageRights,
   canReadProject,
   canReview,
@@ -115,6 +117,21 @@ describe('canDownloadArtifact', () => {
       ),
       false,
     );
+  });
+});
+
+describe('canCreateProject / canManageCollaborators', () => {
+  it('allows designers and staff.designer to create, and only the owner to share', () => {
+    assert.equal(canCreateProject(OWNER), true);
+    assert.equal(canCreateProject(actor('s', 'staff.designer')), true);
+    assert.equal(canManageCollaborators(OWNER, project), true);
+  });
+  it('denies customers, other staff and non-owners', () => {
+    assert.equal(canCreateProject(actor('buyer')), false);
+    assert.equal(canCreateProject(actor('m', 'staff.moderator')), false);
+    assert.equal(canCreateProject(null), false);
+    assert.equal(canManageCollaborators(COLLAB, project), false);
+    assert.equal(canManageCollaborators(actor('a', 'staff.admin'), project), false);
   });
 });
 
