@@ -1,8 +1,8 @@
 # Embroidery Platform
 
-API, workers and QA tools for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
+API, workers, QA tools and the Studio web app (`web/`) for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** sprint S6. The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Publications and rights come later.
+**Status:** sprint S6 plus the first Studio web app (`web/`, see its [README](web/README.md)). The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Publications and rights come later.
 
 ## Quick start
 
@@ -65,6 +65,7 @@ workers/
   handlers/                  message type → handler; digitize / validate / export / simulate
   engines/                   DigitizingEngine interface · fake/ (deterministic test engine)
 tools/format-harness/        independent DST/JEF readers (QA)
+web/                         Studio web app (Next.js): sign-in, projects, editor shell, canvas, autosave, jobs
 migrations/                  copied from the docs repo; never edit an applied migration
 contracts/                   openapi.yaml + project-document.schema.json (source: docs repo)
 test/unit · test/integration · test/fixtures/reference
@@ -139,6 +140,19 @@ Also: `GET /design-projects/{id}/artifacts` (list with `versionId` / `type` filt
 Found by the contract tests: `/me/machines` returned `"nickname": null`, which the contract does not allow; it is now omitted when unset.
 
 Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-08/S6-09 simulator and job chips and S6-11 E2E (web app), S6-10/S6-12 golden corpus on the real engine (Gate 1).
+
+## Studio web app (first cut)
+
+| Task                                                               | Status                      | Evidence                                                                                                                  |
+| ------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| S1-11 Studio app shell, routing, auth session, design tokens       | Done (dev sign-in until A5) | httpOnly session cookie, same-origin API proxy; production build hides dev sign-in                                        |
+| S1-12 Canvas: mm coordinates, zoom/pan, rulers, grid, hoop outline | Done                        | Camera unit tests; e2e: `1` = 100 % (96 dpi), `0` fits the hoop                                                           |
+| S2-17 Undo/redo command stack                                      | Done                        | ≥ 200 steps, unit tests; e2e undo restores the saved value                                                                |
+| S4-04 Autosave, status indicator, conflict modal                   | Done                        | Autosave unit tests (debounce, max wait, offline retry, conflict, invalid); e2e two-writer conflict → "Reload their copy" |
+| S6-09 Job chips + progress polling                                 | Done                        | e2e: Validate shows issues by object; Export downloads the DST                                                            |
+| S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                            |
+
+Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). Partly done: S2-16 (selection, arrow-key nudge and numeric position; no drag handles yet). Not started: drawing tools (S3-05/S3-06), SVG import, the simulator (S6-08).
 
 ## Known limits
 

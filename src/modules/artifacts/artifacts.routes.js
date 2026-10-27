@@ -19,13 +19,21 @@ export function createArtifactsRouter({ limit, ...deps }) {
   });
 
   // Artifacts are immutable, so the content hash is a strong ETag and clients may cache.
-  router.get('/artifacts/:artifactId/stitch-data', async (req, res) => {
-    const { body, sha256 } = await service.stitchData(req.actor, req.params.artifactId);
+  const serve = (artifactType, headers) => async (req, res) => {
+    const { body, sha256 } = await service.content(req.actor, req.params.artifactId, artifactType);
     const etag = `"${sha256}"`;
     res.set({ ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' });
     if (req.get('if-none-match') === etag) return res.status(304).end();
-    res.set({ 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' }).send(body);
-  });
+    res.set(headers).send(body);
+  };
+  router.get(
+    '/artifacts/:artifactId/stitch-data',
+    serve('stitch_data', { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' }),
+  );
+  router.get(
+    '/artifacts/:artifactId/report',
+    serve('report', { 'Content-Type': 'application/json' }),
+  );
 
   return router;
 }
