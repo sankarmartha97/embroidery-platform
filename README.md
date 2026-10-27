@@ -101,7 +101,7 @@ Not started (other owners or blocked): S1-02/S2-10 document schema sign-off, S1-
 | S3-04 Worker loop: receive, claim, heartbeat, cancel check               | Done                   | FakeEngine job runs outbox → SQS → worker → S3. IT-02, IT-04, IT-06, IT-11 green, plus retries, timeout and lost-ownership tests                                            |
 | S3-07 Integration tests: projects and versions                           | Done                   | `test/integration/projects.test.js` (22 tests)                                                                                                                              |
 
-Not done in S3: S3-01/S3-11 real engine mapping (blocked on Gate 1), S3-02 IaC, S3-05/S3-06 drawing tools and S3-09 Playwright (need the web app), S3-08 golden corpus runner.
+Not done in S3: S3-01/S3-11 real engine mapping (blocked on Gate 1), S3-02 IaC, S3-08 golden corpus runner.
 
 ## Sprint S4: what's done
 
@@ -143,16 +143,18 @@ Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-0
 
 ## Studio web app (first cut)
 
-| Task                                                               | Status                      | Evidence                                                                                                                  |
-| ------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| S1-11 Studio app shell, routing, auth session, design tokens       | Done (dev sign-in until A5) | httpOnly session cookie, same-origin API proxy; production build hides dev sign-in                                        |
-| S1-12 Canvas: mm coordinates, zoom/pan, rulers, grid, hoop outline | Done                        | Camera unit tests; e2e: `1` = 100 % (96 dpi), `0` fits the hoop                                                           |
-| S2-17 Undo/redo command stack                                      | Done                        | ≥ 200 steps, unit tests; e2e undo restores the saved value                                                                |
-| S4-04 Autosave, status indicator, conflict modal                   | Done                        | Autosave unit tests (debounce, max wait, offline retry, conflict, invalid); e2e two-writer conflict → "Reload their copy" |
-| S6-09 Job chips + progress polling                                 | Done                        | e2e: Validate shows issues by object; Export downloads the DST                                                            |
-| S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                            |
+| Task                                                               | Status                      | Evidence                                                                                                                                |
+| ------------------------------------------------------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| S1-11 Studio app shell, routing, auth session, design tokens       | Done (dev sign-in until A5) | httpOnly session cookie, same-origin API proxy; production build hides dev sign-in                                                      |
+| S1-12 Canvas: mm coordinates, zoom/pan, rulers, grid, hoop outline | Done                        | Camera unit tests; e2e: `1` = 100 % (96 dpi), `0` fits the hoop                                                                         |
+| S2-17 Undo/redo command stack                                      | Done                        | ≥ 200 steps, unit tests; e2e undo restores the saved value                                                                              |
+| S4-04 Autosave, status indicator, conflict modal                   | Done                        | Autosave unit tests (debounce, max wait, offline retry, conflict, invalid); e2e two-writer conflict → "Reload their copy"               |
+| S6-09 Job chips + progress polling                                 | Done                        | e2e: Validate shows issues by object; Export downloads the DST                                                                          |
+| S3-05 Drawing: rectangle, ellipse, polygon                         | Done                        | `web/test/shapes.test.js` checks drawn shapes with the API's own validator; e2e draws each with the mouse and checks the saved document |
+| S3-06 Pen / Bézier tool                                            | Done                        | Open and closed paths, corner and smooth nodes, node editing (e2e drags a corner and checks the saved path)                             |
+| S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                                          |
 
-Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). Partly done: S2-16 (selection, arrow-key nudge and numeric position; no drag handles yet). Not started: drawing tools (S3-05/S3-06), SVG import, the simulator (S6-08).
+Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). Partly done: S2-16 (selection, arrow-key nudge and numeric position; no drag handles yet). Not started: text, SVG import, the simulator (S6-08).
 
 ## Known limits
 

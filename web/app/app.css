@@ -576,3 +576,52 @@ code {
 .design-object-hit {
   cursor: pointer;
 }
+
+/* ---- Drawing tools ---- */
+.canvas-wrap.tool-rect,
+.canvas-wrap.tool-ellipse,
+.canvas-wrap.tool-polygon,
+.canvas-wrap.tool-pen {
+  cursor: crosshair;
+}
+.draft-path {
+  fill: rgb(129 140 248 / 0.12);
+  stroke: var(--selection);
+  stroke-width: 1.5px;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+.draft-rubber {
+  stroke: var(--selection);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+}
+.edit-path {
+  fill: none;
+  stroke: var(--selection);
+  stroke-width: 1px;
+}
+.node {
+  fill: #ffffff;
+  stroke: var(--selection);
+  stroke-width: 1.5px;
+}
+.node-close {
+  fill: var(--selection);
+}
+.handle-line {
+  stroke: var(--selection);
+  stroke-width: 1px;
+  opacity: 0.7;
+}
+.handle-dot {
+  fill: var(--canvas-bg);
+  stroke: var(--selection);
+  stroke-width: 1.5px;
+}
+.grab {
+  cursor: grab;
+}
+.grab:active {
+  cursor: grabbing;
+}

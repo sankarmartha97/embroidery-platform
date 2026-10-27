@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, newIdempotencyKey } from '@/lib/api.js';
 import { createAutosave, STATUS, STATUS_LABEL } from '@/lib/autosave.js';
 import { hoopOf, nudge } from '@/lib/document.js';
+import { addShape, setPath } from '@/lib/shapes.js';
 import { createHistory, record, redo, reset, undo } from '@/lib/history.js';
 import { pollJob } from '@/lib/jobs.js';
 import Canvas from './Canvas.js';
@@ -14,9 +15,11 @@ import JobChip from './JobChip.js';
 import SequencePanel from './SequencePanel.js';
 
 const TOOLS = [
-  { id: 'select', label: 'Select', glyph: '↖', ready: true },
-  { id: 'pen', label: 'Pen (coming soon)', glyph: '✒' },
-  { id: 'shapes', label: 'Shapes (coming soon)', glyph: '◻' },
+  { id: 'select', label: 'Select (V)', key: 'v', glyph: '↖', ready: true },
+  { id: 'rect', label: 'Rectangle (R)', key: 'r', glyph: '▭', ready: true },
+  { id: 'ellipse', label: 'Ellipse (E)', key: 'e', glyph: '◯', ready: true },
+  { id: 'polygon', label: 'Polygon (G)', key: 'g', glyph: '⬠', ready: true },
+  { id: 'pen', label: 'Pen (P)', key: 'p', glyph: '✒', ready: true },
   { id: 'text', label: 'Text (coming soon)', glyph: 'T' },
   { id: 'import', label: 'Import SVG (coming soon)', glyph: '⇪' },
 ];
@@ -25,7 +28,9 @@ export default function Studio({ initialProject, formats, profiles }) {
   const projectId = initialProject.id;
   const [project, setProject] = useState(initialProject);
   const [history, setHistory] = useState(() => createHistory(initialProject.draft));
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedIdRaw] = useState(null);
+  const [tool, setToolRaw] = useState('select');
+  const [editingId, setEditingId] = useState(null);
   const [save, setSave] = useState({
     status: STATUS.SAVED,
     revision: initialProject.draftRevision,
@@ -73,6 +78,29 @@ export default function Studio({ initialProject, formats, profiles }) {
   }, []);
   const edit = (change) => canEdit && apply(change(document));
 
+  // Selecting something else, or picking a tool, ends node editing.
+  const setSelectedId = useCallback((id) => {
+    setSelectedIdRaw(id);
+    setEditingId((current) => (current && current !== id ? null : current));
+  }, []);
+  const setTool = useCallback((next) => {
+    setToolRaw(next);
+    setEditingId(null);
+  }, []);
+
+  function createShape(shape) {
+    if (!canEdit) return;
+    const { document: next, id } = addShape(document, shape);
+    apply(next);
+    setSelectedIdRaw(id);
+    setToolRaw('select');
+  }
+  function startEditing(id) {
+    setSelectedIdRaw(id);
+    setEditingId(id);
+    setToolRaw('select');
+  }
+
   const doUndo = useCallback(() => {
     const next = undo(history);
     if (next === history) return;
@@ -89,7 +117,13 @@ export default function Studio({ initialProject, formats, profiles }) {
   useEffect(() => {
     function onKey(e) {
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod || e.target.closest?.('input, textarea, select')) return;
+      if (e.target.closest?.('input, textarea, select')) return;
+      if (!mod && !e.altKey) {
+        const picked = TOOLS.find((t) => t.ready && t.key === e.key.toLowerCase());
+        if (picked && canEdit) setTool(picked.id);
+        return;
+      }
+      if (!mod) return;
       if (e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) doRedo();
@@ -101,7 +135,7 @@ export default function Studio({ initialProject, formats, profiles }) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doUndo, doRedo]);
+  }, [doUndo, doRedo, setTool, canEdit]);
 
   // ---- Conflict resolution ----
   async function reloadTheirs() {
@@ -295,11 +329,12 @@ export default function Studio({ initialProject, formats, profiles }) {
         {TOOLS.map((t) => (
           <button
             key={t.id}
-            className={`tool ${t.id === 'select' ? 'tool-active' : ''}`}
-            disabled={!t.ready}
+            className={`tool ${t.id === tool ? 'tool-active' : ''}`}
+            disabled={!t.ready || (!canEdit && t.id !== 'select')}
             aria-label={t.label}
             title={t.label}
-            aria-pressed={t.id === 'select'}
+            aria-pressed={t.id === tool}
+            onClick={() => setTool(t.id)}
           >
             {t.glyph}
           </button>
@@ -322,6 +357,13 @@ export default function Studio({ initialProject, formats, profiles }) {
           onSelect={setSelectedId}
           onNudge={(id, dx, dy) => edit((d) => nudge(d, id, dx, dy))}
           onZoom={setZoom}
+          tool={tool}
+          onToolChange={setTool}
+          onCreate={createShape}
+          editingId={editingId}
+          onStartEdit={startEditing}
+          onEndEdit={() => setEditingId(null)}
+          onEditPath={(id, d, closed) => edit((doc) => setPath(doc, id, d, closed))}
         />
       </main>
 
@@ -337,6 +379,8 @@ export default function Studio({ initialProject, formats, profiles }) {
         profiles={profiles}
         profileId={project.machineProfileId}
         onProfile={changeProfile}
+        editingId={editingId}
+        onEditPoints={(id) => (editingId === id ? setEditingId(null) : startEditing(id))}
       />
 
       {save.status === STATUS.CONFLICT && (
