@@ -7,6 +7,7 @@ import {
   canCreateProject,
   canDownloadArtifact,
   canEditDraft,
+  downloadDecision,
   canManageCollaborators,
   canManageRights,
   canReadProject,
@@ -18,7 +19,6 @@ const actor = (userId, ...roles) => ({ userId, roles: new Set(['customer', ...ro
 const OWNER = actor('owner', 'designer');
 const STRANGER = actor('stranger', 'designer');
 const project = { id: 'p1', ownerUserId: 'owner', status: 'draft' };
-const published = { ...project, status: 'published' };
 const editor = (extra = {}) => ({
   userId: 'collab',
   role: 'editor',
@@ -80,43 +80,79 @@ describe('canCreateExport', () => {
   });
 });
 
-describe('canDownloadArtifact', () => {
-  const machineFile = { artifactType: 'machine_file' };
-  it('allows readers and entitled customers of published designs', () => {
-    assert.equal(canDownloadArtifact(OWNER, project, null, machineFile, null), true);
+describe('canDownloadArtifact / downloadDecision', () => {
+  const onSale = { ...project, status: 'published', publishedVersionId: 'v1' };
+  const machineFile = { artifactType: 'machine_file', projectVersionId: 'v1' };
+  const preview = { artifactType: 'preview', projectVersionId: 'v1' };
+  const buyer = actor('buyer');
+  const purchase = { current: true, basis: 'purchase', ref: 'order-1' };
+
+  it('allows the owner, staff and collaborators, with the basis recorded', () => {
+    assert.deepEqual(downloadDecision(OWNER, project, null, machineFile, null), {
+      allowed: true,
+      basis: 'owner',
+    });
     assert.equal(
-      canDownloadArtifact(actor('buyer'), published, null, machineFile, { current: true }),
-      true,
+      downloadDecision(actor('m', 'staff.moderator'), project, null, machineFile, null).basis,
+      'staff',
     );
+    assert.deepEqual(downloadDecision(COLLAB, project, viewer, preview, null), {
+      allowed: true,
+      basis: 'collaborator',
+    });
     assert.equal(
-      canDownloadArtifact(
-        actor('buyer'),
-        published,
-        null,
-        { artifactType: 'preview' },
-        { current: true },
-      ),
+      canDownloadArtifact(COLLAB, project, editor({ canExport: true }), machineFile, null),
       true,
     );
   });
-  it('denies customers without entitlement, unpublished designs and source artifacts', () => {
-    const buyer = actor('buyer');
+
+  it('needs the export permission for collaborators to download machine files', () => {
+    assert.deepEqual(downloadDecision(COLLAB, project, viewer, machineFile, null), {
+      allowed: false,
+      basis: 'collaborator',
+      reason: 'EXPORT_NOT_ALLOWED',
+    });
+    assert.equal(canDownloadArtifact(COLLAB, project, editor(), machineFile, null), false);
+  });
+
+  it('allows entitled customers machine files and previews of the published version', () => {
+    assert.deepEqual(downloadDecision(buyer, onSale, null, machineFile, purchase), {
+      allowed: true,
+      basis: 'purchase',
+    });
     assert.equal(
-      canDownloadArtifact(buyer, published, null, machineFile, { current: false }),
-      false,
+      downloadDecision(buyer, onSale, null, preview, { current: true, basis: 'subscription' })
+        .basis,
+      'subscription',
     );
-    assert.equal(canDownloadArtifact(buyer, published, null, machineFile, null), false);
-    assert.equal(canDownloadArtifact(buyer, project, null, machineFile, { current: true }), false);
-    assert.equal(
-      canDownloadArtifact(
-        buyer,
-        published,
-        null,
-        { artifactType: 'stitch_data' },
-        { current: true },
-      ),
-      false,
-    );
+  });
+
+  it('asks customers without an entitlement to buy (ENTITLEMENT_REQUIRED)', () => {
+    for (const entitlement of [null, { current: false, basis: 'purchase' }]) {
+      assert.deepEqual(downloadDecision(buyer, onSale, null, machineFile, entitlement), {
+        allowed: false,
+        basis: 'none',
+        reason: 'ENTITLEMENT_REQUIRED',
+      });
+    }
+  });
+
+  it('hides everything else from customers (NOT_VISIBLE)', () => {
+    const cases = [
+      [project, machineFile], // not published
+      [onSale, { artifactType: 'stitch_data', projectVersionId: 'v1' }], // not a customer type
+      [onSale, { artifactType: 'machine_file', projectVersionId: 'v2' }], // a later version
+      [{ ...onSale, publishedVersionId: null }, machineFile], // no approved publication
+    ];
+    for (const [p, a] of cases) {
+      assert.equal(downloadDecision(buyer, p, null, a, purchase).reason, 'NOT_VISIBLE');
+    }
+    assert.equal(canDownloadArtifact(null, onSale, null, machineFile, purchase), false);
+  });
+
+  it('treats a revoked collaborator as a stranger', () => {
+    const revoked = { ...viewer, revokedAt: new Date() };
+    assert.equal(downloadDecision(COLLAB, project, revoked, preview, null).reason, 'NOT_VISIBLE');
   });
 });
 

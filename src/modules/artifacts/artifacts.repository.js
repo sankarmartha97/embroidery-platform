@@ -89,6 +89,46 @@ export function createArtifactsRepository(db) {
       return rows[0] ? toArtifact(rows[0]) : null;
     },
 
+    /** A project's artifacts, newest first, optionally for one version and/or type. */
+    async listByProject(projectId, { versionId, type, limit = 200 }) {
+      const where = ['v.project_id = ?', 'a.deleted_at IS NULL'];
+      const params = [projectId];
+      if (versionId) {
+        where.push('a.project_version_id = ?');
+        params.push(versionId);
+      }
+      if (type) {
+        where.push('a.artifact_type = ?');
+        params.push(type);
+      }
+      const columns = COLUMNS.split(',')
+        .map((c) => `a.${c.trim()}`)
+        .join(', ');
+      const [rows] = await db.execute(
+        `SELECT ${columns}
+           FROM design_artifacts a
+           JOIN design_project_versions v ON v.id = a.project_version_id
+          WHERE ${where.join(' AND ')}
+          ORDER BY a.created_at DESC, a.id DESC
+          LIMIT ${Number(limit)}`,
+        params,
+      );
+      return rows.map(toArtifact);
+    },
+
+    /** The approved publication of a project: its version and marketplace listing, or null. */
+    async findApprovedPublication(projectId) {
+      const [rows] = await db.execute(
+        `SELECT project_version_id, marketplace_listing_ref FROM design_publications
+          WHERE project_id = ? AND status = 'approved'
+          ORDER BY decided_at DESC LIMIT 1`,
+        [projectId],
+      );
+      return rows[0]
+        ? { versionId: rows[0].project_version_id, listingRef: rows[0].marketplace_listing_ref }
+        : null;
+    },
+
     async listByJob(jobId) {
       const [rows] = await db.execute(
         `SELECT ${COLUMNS} FROM design_artifacts

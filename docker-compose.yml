@@ -22,6 +22,8 @@ services:
     environment:
       SERVICES: sqs,s3
       AWS_DEFAULT_REGION: eu-west-1
+      # Enforce presigned-URL signatures and expiry like real S3 (SEC-T04).
+      S3_SKIP_SIGNATURE_VALIDATION: '0'
     ports: ['4566:4566']
     volumes:
       - ./docker/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro

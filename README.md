@@ -2,7 +2,7 @@
 
 API, workers and QA tools for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** sprint S4. The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions) and jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Artifact listing and download URLs come next (S5).
+**Status:** sprint S5. The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Sprint S5 is the latest; publications and rights come later.
 
 ## Quick start
 
@@ -113,14 +113,28 @@ Schema change: migration `202612140900__job_request_fingerprint.sql` adds `digit
 
 Not done in S4: S4-01/S4-07 real engine adapter and stitch-outs (blocked on Gate 1), S4-04/S4-05 autosave UI and properties panel (need the web app).
 
+## Sprint S5: what's done
+
+| Task                                                          | Status               | Evidence                                                                                                                                             |
+| ------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S5-03 Artifacts: key scheme, upload, checksum re-verify, rows | Done (S3–S4)         | IT-06 green; keys `artifacts/{projectId}/{versionId}/{artifactId}.{ext}`                                                                             |
+| S5-04 Download URL: authz, entitlement stub, export events    | Done                 | SEC-T03 (403 `ENTITLEMENT_REQUIRED`, denial recorded) and SEC-T04 (URL TTL 300 s; LocalStack now enforces signatures, an expired URL gets 403) green |
+| S5-05 Audit events                                            | Done for what exists | Download decisions in `design_export_events`; staff access to others' projects as `audit` log lines                                                  |
+| S5-06 Stitch-data fetch for simulator                         | Done                 | `GET /artifacts/{id}/stitch-data`: gzip JSON, content-hash ETag, 304, readers only. Added to `openapi.yaml` in the docs first                        |
+| S5-11 IDOR matrix: projects, jobs, artifacts                  | Done                 | SEC-T01, SEC-T02, SEC-T05 green; the matrix fails if a contract route with an id has no row                                                          |
+
+Also: `GET /design-projects/{id}/artifacts` (list with `versionId` / `type` filters). Not done in S5: S5-01/S5-10/S5-13 format writers, parser CI for writers and stitch-outs (real engine, Gate 1), S5-02 IaC, S5-07/08/09 and S5-12 (web app).
+
 ## Known limits
 
 - **FakeEngine is not a production engine.** It turns every object into running stitches, and its DST/JEF writers have not passed the [production enablement gate](../embroidery-platform-docs/05-digitizing-engine/format-support.md#production-enablement-gate). Every format is `productionEnabled: false`.
 - **Roles** come from `DEV_ROLE_ASSIGNMENTS` until the marketplace role source is connected (A5). Production refuses non-empty assignments.
 - **Rate limits** are per API task (in memory). Fleet-wide limits belong at the edge (WAF).
 - **Idempotency on other POSTs:** the optional `Idempotency-Key` on project and version creation is accepted but not stored (no table for it; version snapshots are already deduplicated by SHA-256). Job creation, where it is required, is fully idempotent.
-- **Job rate limits** (a tighter bucket for job creation) are S6-06; job creation uses the general per-user limit for now.
+- **Job and download rate limits** (tighter buckets) are S6-06; both use the general per-user limit for now.
 - **The reconciler handles stuck jobs only.** Orphaned S3 objects and outbox lag (also its job in 09-devops) are not done yet. The alarm on DLQ depth is CloudWatch infrastructure.
 - **Simulate** calls `renderSimulation` expecting `{ buffer, formatCode }`; that shape is provisional until the real engine is chosen. FakeEngine does not render, so simulate jobs fail with `UNSUPPORTED_STITCH_TYPE`.
-- **Interpretations to confirm:** only the owner may change `visibility` (sharing is the owner's call); archived projects are read-only (409); a missing `If-Match` or `Idempotency-Key` is 400. For jobs: `inputArtifactId` is required for simulate/validate/export unless `digitizeIfMissing` is true, which reuses the version's newest stitch data or chains a digitize job; a chained job ends with its parent's error or cancellation; the requester or anyone who can edit the project may cancel; a crashed worker is reported as `ENGINE_TIMEOUT`; retryable codes get a "try again later" summary on their final failure, because the table's text says "retrying".
+- **Entitlements are a stub** (`DEV_ENTITLEMENTS`, refused in production) until the marketplace integration (S10-01, OQ-04). Customers download only machine files and previews of the version in the **approved publication**; publications have no API yet, so tests insert them directly.
+- **Audit events** other than downloads are structured log lines (`"audit": true`), relying on the log archive for retention; there is no audit table in the schema. Publication decisions, rights verification and role changes are audited when those features exist.
+- **Interpretations to confirm:** collaborators need `can_export` to download machine files ("per above" in 04-api/authorization.md read as the export rule); viewers may still download previews, stitch data and reports. Customers cannot list a project's artifacts (they get download URLs by artifact id). only the owner may change `visibility` (sharing is the owner's call); archived projects are read-only (409); a missing `If-Match` or `Idempotency-Key` is 400. For jobs: `inputArtifactId` is required for simulate/validate/export unless `digitizeIfMissing` is true, which reuses the version's newest stitch data or chains a digitize job; a chained job ends with its parent's error or cancellation; the requester or anyone who can edit the project may cancel; a crashed worker is reported as `ENGINE_TIMEOUT`; retryable codes get a "try again later" summary on their final failure, because the table's text says "retrying".
 - Numbers such as the 10-machine limit and 30–600 mm hoop range are placeholders from the [feature specifications](../embroidery-platform-docs/01-product/feature-specifications.md).

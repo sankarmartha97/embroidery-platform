@@ -1,9 +1,16 @@
 import { createApp } from './app.js';
+import { createArtifactStore, createS3Client } from './aws/s3.js';
 import { env } from './config/env.js';
 import { pool } from './db/pool.js';
 import { createTokenVerifier } from './http/auth.js';
 import { logger } from './lib/logger.js';
+import { createStaticEntitlementProvider } from './modules/entitlements/index.js';
 import { createStaticRolesProvider } from './modules/identity/index.js';
+
+if (!env.S3_BUCKET_ARTIFACTS) {
+  logger.error('S3_BUCKET_ARTIFACTS is not set');
+  process.exit(1);
+}
 
 const verifyToken = await createTokenVerifier({
   issuer: env.AUTH_JWT_ISSUER,
@@ -21,6 +28,10 @@ const app = createApp({
   rateLimit: { windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_MAX },
   allowUngatedFormats: env.FORMATS_ALLOW_UNGATED,
   engineName: env.DIGITIZING_ENGINE,
+  store: createArtifactStore({ client: createS3Client(), bucket: env.S3_BUCKET_ARTIFACTS }),
+  entitlements: createStaticEntitlementProvider(env.DEV_ENTITLEMENTS),
+  downloadTtlSeconds: env.DOWNLOAD_URL_TTL_SECONDS,
+  ipHashSecret: env.IP_HASH_SECRET,
 });
 
 const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'api listening'));

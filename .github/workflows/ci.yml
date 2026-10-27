@@ -25,6 +25,7 @@ jobs:
         env:
           SERVICES: sqs,s3
           AWS_DEFAULT_REGION: eu-west-1
+          S3_SKIP_SIGNATURE_VALIDATION: '0'
         ports: ['4566:4566']
     env:
       AWS_ACCESS_KEY_ID: test
