@@ -348,7 +348,15 @@ paths:
       operationId: listMachineProfiles
       responses:
         '401': { $ref: '#/components/responses/Error' }
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/MachineProfile' } }
 
   /machine-formats:
     get:
@@ -357,7 +365,15 @@ paths:
       operationId: listMachineFormats
       responses:
         '401': { $ref: '#/components/responses/Error' }
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/MachineFormat' } }
 
   /me/machines:
     get:
@@ -595,6 +611,10 @@ components:
         engineName: { type: [string, 'null'] }
         engineVersion: { type: [string, 'null'] }
         validationStatus: { type: string, enum: [pending, passed, warning, failed] }
+        validationReportArtifactId:
+          type: [string, 'null']
+          format: uuid
+          description: On stitch_data, the report artifact of its latest validate job
         createdAt: { type: string, format: date-time }
 
     RightsDeclaration:
@@ -620,6 +640,33 @@ components:
         decisionReason: { type: [string, 'null'] }
         submittedAt: { type: string, format: date-time }
         decidedAt: { type: [string, 'null'], format: date-time }
+
+    MachineProfile:
+      type: object
+      required: [id, name, format, hoopWidthMm, hoopHeightMm, isSystemPreset]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        format: { type: string, description: One of /machine-formats }
+        hoopWidthMm: { type: number }
+        hoopHeightMm: { type: number }
+        minStitchLengthMm: { type: number }
+        maxStitchLengthMm: { type: number }
+        maxJumpLengthMm: { type: [number, 'null'] }
+        trimJumpThresholdMm: { type: [number, 'null'], description: Jumps longer than this get a trim }
+        maxColors: { type: [integer, 'null'] }
+        isSystemPreset: { type: boolean }
+
+    MachineFormat:
+      type: object
+      required: [code, name, extension, colourInfo, productionEnabled]
+      properties:
+        code: { type: string, examples: [DST] }
+        name: { type: string }
+        extension: { type: string }
+        colourInfo: { type: string, enum: [stops-only, embedded-palette, palette-index] }
+        maxStitchMm: { type: [number, 'null'] }
+        productionEnabled: { type: boolean, description: True only after the production enablement gate (05-digitizing-engine/format-support.md) }
 
     Hoop:
       type: object

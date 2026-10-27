@@ -126,6 +126,11 @@ export function createJobRunner({
       if (!ok) throw new LostJob();
       const stitchData = stored.find((a) => a.artifactType === 'stitch_data');
       if (stitchData) await releaseChildren(conn, job.id, stitchData.id, correlationId);
+      const report = stored.find((a) => a.artifactType === 'report');
+      if (report && job.inputArtifactId) {
+        // The stitch data shows its latest validation result (S6-04).
+        await repo.setValidation(job.inputArtifactId, report.validationStatus, report.id);
+      }
       return true;
     }).catch((err) => {
       if (err instanceof LostJob) return false;

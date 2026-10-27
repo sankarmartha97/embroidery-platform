@@ -25,7 +25,12 @@ const app = createApp({
   logger,
   verifyToken,
   rolesProvider: createStaticRolesProvider(env.DEV_ROLE_ASSIGNMENTS),
-  rateLimit: { windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_MAX },
+  rateLimit: {
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX,
+    jobsMax: env.RATE_LIMIT_JOBS_MAX,
+    downloadsMax: env.RATE_LIMIT_DOWNLOADS_MAX,
+  },
   allowUngatedFormats: env.FORMATS_ALLOW_UNGATED,
   engineName: env.DIGITIZING_ENGINE,
   store: createArtifactStore({ client: createS3Client(), bucket: env.S3_BUCKET_ARTIFACTS }),

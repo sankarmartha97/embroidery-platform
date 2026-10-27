@@ -61,6 +61,9 @@ export const env = Object.freeze({
 
   RATE_LIMIT_WINDOW_MS: int('RATE_LIMIT_WINDOW_MS', 60_000),
   RATE_LIMIT_MAX: int('RATE_LIMIT_MAX', 600),
+  // Tighter per-user buckets (04-api/conventions.md): job creation and download URLs.
+  RATE_LIMIT_JOBS_MAX: int('RATE_LIMIT_JOBS_MAX', 30),
+  RATE_LIMIT_DOWNLOADS_MAX: int('RATE_LIMIT_DOWNLOADS_MAX', 60),
 
   AWS_REGION: str('AWS_REGION', { fallback: 'eu-west-1' }),
   AWS_ENDPOINT_URL: str('AWS_ENDPOINT_URL'),

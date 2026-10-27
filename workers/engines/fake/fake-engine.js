@@ -1,5 +1,6 @@
 import { applyTransform, parsePath } from '../../../src/lib/document/svg-path.js';
 import { DigitizingEngine, EngineError, throwIfAborted } from '../digitizing-engine.js';
+import { validateStitchData } from '../../validation/stitch-rules.js';
 import { writeDst } from './dst-writer.js';
 import { writeJef } from './jef-writer.js';
 
@@ -86,36 +87,8 @@ export class FakeEngine extends DigitizingEngine {
 
   async validate(stitchData, machineProfile, { signal } = {}) {
     throwIfAborted(signal);
-    const issues = [];
-    const { stats: s, bounds: b } = stitchData;
-    if (s.stitches === 0) issues.push({ code: 'EMPTY_DESIGN', severity: 'error' });
-
-    const halfW = (machineProfile.hoopWidthMm * 10) / 2;
-    const halfH = (machineProfile.hoopHeightMm * 10) / 2;
-    if (b.minX < -halfW || b.maxX > halfW || b.minY < -halfH || b.maxY > halfH) {
-      issues.push({ code: 'OUT_OF_HOOP', severity: 'error' });
-    }
-
-    const maxLen = (machineProfile.maxStitchLengthMm ?? 12.1) * 10;
-    let prev = null;
-    for (const [type, x, y] of stitchData.commands) {
-      if (type === 'stitch' && prev && Math.hypot(x - prev[0], y - prev[1]) > maxLen) {
-        issues.push({ code: 'STITCH_TOO_LONG', severity: 'error' });
-        break;
-      }
-      if (type === 'stitch' || type === 'jump') prev = [x, y];
-    }
-
-    if (machineProfile.maxColors && stitchData.threads.length > machineProfile.maxColors) {
-      issues.push({ code: 'TOO_MANY_COLORS', severity: 'error' });
-    }
-
-    const status = issues.some((i) => i.severity === 'error')
-      ? 'failed'
-      : issues.length
-        ? 'warning'
-        : 'passed';
-    return { status, issues };
+    // Its DST/JEF writers split long stitches, so STITCH_TOO_LONG is a warning here.
+    return validateStitchData(stitchData, machineProfile, { longStitchesSplit: true });
   }
 }
 

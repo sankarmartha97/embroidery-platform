@@ -14,7 +14,7 @@ const DOCUMENT_ROUTE = /^\/design-projects\/[^/]+\/draft$/;
 
 /**
  * Express app factory (no listen). Dependencies are injected so tests can supply their own.
- * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max }, allowUngatedFormats: boolean, engineName: string,
+ * @param {{ db, logger, verifyToken, rolesProvider, rateLimit: { windowMs, max, jobsMax, downloadsMax }, allowUngatedFormats: boolean, engineName: string,
  *   store, entitlements, downloadTtlSeconds: number, ipHashSecret: string }} deps
  */
 export function createApp(deps) {
@@ -44,6 +44,11 @@ export function createApp(deps) {
   api.use(
     createJobsRouter({
       db,
+      limit: rateLimit({
+        windowMs: deps.rateLimit.windowMs,
+        max: deps.rateLimit.jobsMax ?? deps.rateLimit.max,
+        keyPrefix: 'jobs',
+      }),
       engineName: deps.engineName,
       allowUngatedFormats: deps.allowUngatedFormats,
     }),
@@ -51,6 +56,11 @@ export function createApp(deps) {
   api.use(
     createArtifactsRouter({
       db,
+      limit: rateLimit({
+        windowMs: deps.rateLimit.windowMs,
+        max: deps.rateLimit.downloadsMax ?? deps.rateLimit.max,
+        keyPrefix: 'downloads',
+      }),
       store: deps.store,
       entitlements: deps.entitlements,
       ttlSeconds: deps.downloadTtlSeconds,

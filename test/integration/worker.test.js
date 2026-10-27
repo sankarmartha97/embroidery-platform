@@ -311,10 +311,34 @@ describe('worker job loop', () => {
       const [report] = await artifacts.listByJob(job.id);
       assert.equal(report.artifactType, 'report');
       assert.equal(report.validationStatus, 'passed');
-      assert.deepEqual(JSON.parse(await store.get(report.storageKey)), {
-        status: 'passed',
-        issues: [],
+      const body = JSON.parse(await store.get(report.storageKey));
+      assert.equal(body.status, 'passed');
+      assert.deepEqual(body.issues, []);
+      assert.equal(body.machineProfile.hoopWidthMm, 100);
+      assert.equal(body.engine, 'fake');
+
+      // S6-04: the stitch data shows its latest validation result and links the report.
+      const checked = await artifacts.findById(stitchData.id);
+      assert.equal(checked.validationStatus, 'passed');
+      assert.equal(checked.validationReportArtifactId, report.id);
+    });
+
+    it('records issues with object ids when validation fails', async () => {
+      const { versionId, stitchData } = await digitizedVersion();
+      const job = await insertJob(pool, {
+        projectVersionId: versionId,
+        requestedBy: OWNER,
+        jobType: 'validate',
+        inputArtifactId: stitchData.id,
+        machineProfile: { ...PROFILE, hoopWidthMm: 30, hoopHeightMm: 30 },
       });
+      assert.equal(await run(runnerWith(), job.id), 'succeeded', 'a failed check is a result');
+      const [report] = await artifacts.listByJob(job.id);
+      assert.equal(report.validationStatus, 'failed');
+      const { issues } = JSON.parse(await store.get(report.storageKey));
+      const outOfHoop = issues.find((i) => i.code === 'OUT_OF_HOOP');
+      assert.deepEqual(outOfHoop.objectIds.sort(), ['outline', 'underline']);
+      assert.equal((await artifacts.findById(stitchData.id)).validationStatus, 'failed');
     });
 
     it('refuses stitch data that belongs to another version', async () => {
