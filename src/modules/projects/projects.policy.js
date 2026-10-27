@@ -33,6 +33,16 @@ function activeCollaborator(actor, collaborator) {
   );
 }
 
+/** Role check (authorization step 2): registered designers and staff.designer; not customers. */
+export function canCreateProject(actor) {
+  return DIGITIZE_ROLES.some((r) => hasRole(actor, r));
+}
+
+/** Sharing is the owner's decision: visibility and collaborators. */
+export function canManageCollaborators(actor, project) {
+  return isOwner(actor, project);
+}
+
 /** owner · active collaborator · staff with staff.* */
 export function canReadProject(actor, project, collaborator) {
   return isOwner(actor, project) || activeCollaborator(actor, collaborator) || isStaff(actor);

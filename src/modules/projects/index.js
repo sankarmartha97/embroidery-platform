@@ -1,6 +1,8 @@
-// Projects API (routes/service/repository) arrives in sprint S3. The policy is the public surface now.
+export { createProjectsRouter } from './projects.routes.js';
+export { createVersionsRepository } from './versions.repository.js';
 export {
   isStaff,
+  canCreateProject,
   canReadProject,
   canEditDraft,
   canCreateJob,
@@ -9,4 +11,5 @@ export {
   canSubmit,
   canReview,
   canManageRights,
+  canManageCollaborators,
 } from './projects.policy.js';

@@ -32,5 +32,16 @@ export function createReferenceRepository(db) {
       );
       return rows.map(toProfile);
     },
+
+    /** One active profile the caller may use (system preset or their own), or null. */
+    async findMachineProfile(id, userId) {
+      const [rows] = await db.execute(
+        `SELECT ${PROFILE_COLUMNS}
+           FROM design_machine_profiles
+          WHERE id = ? AND is_active = TRUE AND (owner_user_id IS NULL OR owner_user_id = ?)`,
+        [id, userId],
+      );
+      return rows[0] ? toProfile(rows[0]) : null;
+    },
   };
 }

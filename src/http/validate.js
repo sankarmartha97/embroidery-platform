@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import YAML from 'yaml';
+import { ajvErrorsToDetails } from '../lib/ajv-details.js';
 import { errors } from './errors.js';
 
 // Request bodies are validated with the same schemas as OpenAPI (04-api/conventions.md).
@@ -55,21 +56,17 @@ function validatorFor(schemaName) {
   return compiled.get(schemaName);
 }
 
-function toDetails(ajvErrors) {
-  return ajvErrors.map((e) => {
-    let where = e.instancePath || '';
-    if (e.keyword === 'required') where += `/${e.params.missingProperty}`;
-    if (e.keyword === 'additionalProperties') where += `/${e.params.additionalProperty}`;
-    const message = e.keyword === 'additionalProperties' ? 'is not an allowed field' : e.message;
-    return { path: where || '/', message };
-  });
-}
-
-/** Validates req.body against an OpenAPI component schema. */
-export function validateBody(schemaName) {
-  const validate = validatorFor(schemaName);
+/**
+ * Validates req.body against an OpenAPI component schema (by name), or against an inline
+ * request schema copied from openapi.yaml when the contract does not name it.
+ */
+export function validateBody(schema) {
+  const validate =
+    typeof schema === 'string' ? validatorFor(schema) : ajv.compile(strictify(schema));
   return function validateBodyMiddleware(req, _res, next) {
-    if (!validate(req.body ?? {})) return next(errors.validation(toDetails(validate.errors)));
+    if (!validate(req.body ?? {})) {
+      return next(errors.validation(ajvErrorsToDetails(validate.errors)));
+    }
     next();
   };
 }

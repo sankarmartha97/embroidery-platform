@@ -46,11 +46,12 @@ jobs:
           mysql -h 127.0.0.1 -P 3307 -uroot -proot -e "
             CREATE DATABASE IF NOT EXISTS embroidery_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
             GRANT ALL PRIVILEGES ON embroidery_test.* TO 'emb'@'%'; FLUSH PRIVILEGES;"
-      - name: Prepare queues
+      - name: Prepare queues and buckets
         run: |
           for i in $(seq 1 30); do aws --endpoint-url http://localhost:4566 sqs list-queues && break; sleep 2; done
           aws --endpoint-url http://localhost:4566 sqs create-queue --queue-name emb-jobs-dlq
           aws --endpoint-url http://localhost:4566 sqs create-queue --queue-name emb-jobs
+          aws --endpoint-url http://localhost:4566 s3 mb s3://emb-artifacts-local
       - name: Integration tests
         run: npm run test:integration
       - name: Dependency audit

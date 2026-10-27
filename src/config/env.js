@@ -65,6 +65,12 @@ export const env = Object.freeze({
   AWS_REGION: str('AWS_REGION', { fallback: 'eu-west-1' }),
   AWS_ENDPOINT_URL: str('AWS_ENDPOINT_URL'),
   SQS_QUEUE_URL_EMB_JOBS: str('SQS_QUEUE_URL_EMB_JOBS'),
+  S3_BUCKET_ARTIFACTS: str('S3_BUCKET_ARTIFACTS'),
+
+  // Worker: wall-time limit per job attempt, heartbeat interval, and an id for job events.
+  JOB_TIMEOUT_MS: int('JOB_TIMEOUT_MS', 600_000),
+  JOB_HEARTBEAT_MS: int('JOB_HEARTBEAT_MS', 15_000),
+  WORKER_ID: str('WORKER_ID'),
 
   FORMATS_ALLOW_UNGATED: bool('FORMATS_ALLOW_UNGATED', false),
 });

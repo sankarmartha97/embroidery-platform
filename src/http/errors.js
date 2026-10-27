@@ -17,11 +17,18 @@ export const errors = {
   forbidden: () => new AppError('FORBIDDEN', 403, 'You are not allowed to do this.'),
   notFound: () => new AppError('NOT_FOUND', 404, 'Not found.'),
   invalidState: (message) => new AppError('INVALID_STATE', 409, message),
+  draftConflict: (currentRevision) =>
+    new AppError(
+      'DRAFT_CONFLICT',
+      409,
+      'The draft was changed elsewhere. Reload it before saving again.',
+      [{ path: '/If-Match', issue: `current draftRevision is ${currentRevision}` }],
+    ),
   validation: (details, message = 'Request validation failed.') =>
     new AppError('VALIDATION_FAILED', 422, message, details),
   unsupportedFormat: (format) =>
     new AppError('UNSUPPORTED_FORMAT', 422, `Format ${format} is not supported.`, [
-      { path: '/preferredFormat', message: 'must be one of /machine-formats' },
+      { path: '/preferredFormat', issue: 'must be one of /machine-formats' },
     ]),
   rateLimited: () => new AppError('RATE_LIMITED', 429, 'Too many requests. Try again later.'),
 };
