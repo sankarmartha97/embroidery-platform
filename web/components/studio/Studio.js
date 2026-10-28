@@ -8,6 +8,7 @@ import { hoopOf, nudge } from '@/lib/document.js';
 import { addShape, setPath } from '@/lib/shapes.js';
 import { createHistory, record, redo, reset, undo } from '@/lib/history.js';
 import { pollJob } from '@/lib/jobs.js';
+import { PUBLICATION_LABEL } from '@/lib/publishing.js';
 import Canvas from './Canvas.js';
 import ConflictModal from './ConflictModal.js';
 import ExportDialog from './ExportDialog.js';
@@ -16,6 +17,7 @@ import Inspector from './Inspector.js';
 import JobChip from './JobChip.js';
 import SequencePanel from './SequencePanel.js';
 import ShareDialog from './ShareDialog.js';
+import SubmitDialog from './SubmitDialog.js';
 
 const TOOLS = [
   { id: 'select', label: 'Select (V)', key: 'v', glyph: '↖', ready: true },
@@ -44,7 +46,8 @@ export default function Studio({ initialProject, formats, profiles }) {
   const [inspectorTab, setInspectorTab] = useState('properties');
   const [notice, setNotice] = useState(null);
   const [exporting, setExporting] = useState(false);
-  const [dialog, setDialog] = useState(null); // 'history' | 'share' | null
+  const [dialog, setDialog] = useState(null); // 'history' | 'share' | 'submit' | null
+  const [publication, setPublication] = useState(null);
   const [focus, setFocus] = useState(null);
   const autosave = useRef(null);
   const document = history.present;
@@ -163,6 +166,20 @@ export default function Studio({ initialProject, formats, profiles }) {
   }
 
   const closeDialog = useCallback(() => setDialog(null), []);
+
+  // Latest submission, for the status chip (FS-6.4).
+  useEffect(() => {
+    apiFetch(`/design-projects/${projectId}/publications`)
+      .then(({ data }) => setPublication(data.data[0] ?? null))
+      .catch(() => {});
+  }, [projectId]);
+
+  function submitted(next) {
+    setPublication(next);
+    setProject((p) => ({ ...p, status: 'in_review' }));
+    setDialog(null);
+    setNotice('Submitted for review. You will see the moderator’s decision here.');
+  }
 
   // ---- Version history ----
   /** Saves pending edits; throws if the draft cannot be saved (conflict, offline, invalid). */
@@ -357,6 +374,22 @@ export default function Studio({ initialProject, formats, profiles }) {
               Share
             </button>
           )}
+          {publication && (
+            <span
+              className={`publication-chip publication-${publication.status}`}
+              role="status"
+              title={publication.decisionReason ?? undefined}
+              data-testid="publication-status"
+            >
+              {PUBLICATION_LABEL[publication.status] ?? publication.status}
+              {publication.decisionReason && ` · ${publication.decisionReason}`}
+            </span>
+          )}
+          {project.permissions?.canSubmit && project.status === 'draft' && (
+            <button className="btn" onClick={() => setDialog('submit')}>
+              Submit
+            </button>
+          )}
         </div>
         <div className="topbar-group">
           <button className="btn" onClick={() => runJob('digitize')} disabled={busy || !canEdit}>
@@ -479,6 +512,9 @@ export default function Studio({ initialProject, formats, profiles }) {
         />
       )}
       {dialog === 'share' && <ShareDialog projectId={projectId} onClose={closeDialog} />}
+      {dialog === 'submit' && (
+        <SubmitDialog projectId={projectId} onSubmitted={submitted} onClose={closeDialog} />
+      )}
 
       {save.status === STATUS.CONFLICT && (
         <ConflictModal onReload={reloadTheirs} onSaveMine={saveMineAsVersion} />

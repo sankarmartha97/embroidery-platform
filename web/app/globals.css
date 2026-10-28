@@ -140,6 +140,10 @@ select {
   white-space: nowrap;
   transition: background 120ms var(--ease-enter);
 }
+a.btn {
+  color: var(--text);
+  text-decoration: none;
+}
 .btn:hover:not(:disabled) {
   background: var(--surface-muted);
 }

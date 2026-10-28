@@ -1,6 +1,11 @@
 export { createProjectsRouter } from './projects.routes.js';
 export { createVersionsRepository } from './versions.repository.js';
-export { findProjectAccess, loadReadableProject } from './projects.access.js';
+export {
+  findProjectAccess,
+  listProjectAssetIds,
+  loadReadableProject,
+  setProjectState,
+} from './projects.access.js';
 export {
   isStaff,
   canCreateProject,

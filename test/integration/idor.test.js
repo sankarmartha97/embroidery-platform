@@ -21,11 +21,12 @@ const CAROL = '0190f0a0-0000-7000-8000-0000000006c0';
 const DAVE = '0190f0a0-0000-7000-8000-0000000006d0';
 
 // Contract routes with an id that are not built yet (they 404 for everyone today).
-const NOT_IMPLEMENTED = new Set([
-  'POST /design-projects/{id}/rights',
-  'POST /design-projects/{id}/submit',
+const NOT_IMPLEMENTED = new Set(['POST /artifacts/{artifactId}/stitch-outcomes']);
+// Staff-only routes: the role check comes first (04-api/authorization.md step 2), so a designer
+// gets 403 whatever the id. SEC-T11 in publications.test.js covers them.
+const ROLE_GATED = new Set([
   'POST /design-publications/{id}/review',
-  'POST /artifacts/{artifactId}/stitch-outcomes',
+  'POST /design-rights/{rightsId}/verification',
 ]);
 
 describe('IDOR matrix', () => {
@@ -113,6 +114,25 @@ describe('IDOR matrix', () => {
     ],
     ['GET /artifacts/{artifactId}/stitch-data', 'GET', `/artifacts/${ids.artifact}/stitch-data`],
     ['GET /artifacts/{artifactId}/report', 'GET', `/artifacts/${ids.report}/report`],
+    [
+      'POST /design-projects/{id}/rights',
+      'POST',
+      `/design-projects/${ids.project}/rights`,
+      { body: { rightsType: 'owned' } },
+    ],
+    ['GET /design-projects/{id}/rights', 'GET', `/design-projects/${ids.project}/rights`],
+    [
+      'POST /design-projects/{id}/submit',
+      'POST',
+      `/design-projects/${ids.project}/submit`,
+      { body: { versionId: ids.version, acceptCreatorTerms: true } },
+    ],
+    [
+      'GET /design-projects/{id}/publications',
+      'GET',
+      `/design-projects/${ids.project}/publications`,
+    ],
+    ['GET /design-publications/{id}', 'GET', `/design-publications/${ids.publication}`],
   ];
 
   before(async () => {
@@ -174,7 +194,16 @@ describe('IDOR matrix', () => {
       (await call(ALICE, 'GET', `/digitizing-jobs/${validate.id}`)).body,
     );
     const queuedJob = await createJob('queued');
+    // A past submission of Alice's (rejected, so the project stays a draft).
+    const publicationId = '0190f0a0-0000-7000-8000-0000000006e0';
+    await pool.execute(
+      `INSERT INTO design_publications
+         (id, project_id, project_version_id, submitted_by, status, decided_at)
+       VALUES (?, ?, ?, ?, 'rejected', CURRENT_TIMESTAMP(3))`,
+      [publicationId, project.id, version.id, ALICE],
+    );
     ids = {
+      publication: publicationId,
       project: project.id,
       version: version.id,
       job: job.id,
@@ -201,7 +230,9 @@ describe('IDOR matrix', () => {
           .map((m) => `${m.toUpperCase()} ${path}`),
       );
     const covered = new Set(matrix().map(([route]) => route));
-    const missing = contractRoutes.filter((r) => !covered.has(r) && !NOT_IMPLEMENTED.has(r));
+    const missing = contractRoutes.filter(
+      (r) => !covered.has(r) && !NOT_IMPLEMENTED.has(r) && !ROLE_GATED.has(r),
+    );
     assert.deepEqual(missing, [], 'add these routes to the IDOR matrix');
   });
 
@@ -215,7 +246,10 @@ describe('IDOR matrix', () => {
 
   it('SEC-T01: the owner is not blocked by the same requests (the matrix is meaningful)', async () => {
     for (const [route, method, path, options] of matrix()) {
-      if (route.startsWith('PUT') || route.includes('/cancel')) continue; // state-changing on purpose
+      // State-changing on purpose, or (submit) blocked by business rules rather than access.
+      if (route.startsWith('PUT') || route.includes('/cancel') || route.endsWith('/submit')) {
+        continue;
+      }
       const res = await call(ALICE, method, path, options);
       assert.ok(res.status < 400, `${route} → ${res.status} ${res.body.slice(0, 120)}`);
     }

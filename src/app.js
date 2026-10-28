@@ -8,7 +8,9 @@ import { createHealthRouter } from './modules/health/index.js';
 import { createJobsRouter } from './modules/jobs/index.js';
 import { createMachinesRouter } from './modules/machines/index.js';
 import { createProjectsRouter } from './modules/projects/index.js';
+import { createPublicationsRouter } from './modules/publications/index.js';
 import { createReferenceRouter } from './modules/reference/index.js';
+import { createRightsRouter } from './modules/rights/index.js';
 
 const DOCUMENT_ROUTE = /^\/design-projects\/[^/]+\/draft$/;
 
@@ -41,6 +43,8 @@ export function createApp(deps) {
   api.use(createReferenceRouter({ db, allowUngatedFormats: deps.allowUngatedFormats }));
   api.use(createMachinesRouter({ db }));
   api.use(createProjectsRouter({ db }));
+  api.use(createRightsRouter({ db }));
+  api.use(createPublicationsRouter({ db, ipHashSecret: deps.ipHashSecret }));
   api.use(
     createJobsRouter({
       db,

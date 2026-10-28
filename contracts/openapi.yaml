@@ -413,6 +413,10 @@ paths:
       tags: [Publications]
       summary: Add a rights declaration for the design or an asset
       operationId: declareRights
+      description: |
+        Owner only (the owner submits). licensed and commissioned need rightsHolderName and
+        sourceReference; public_domain needs sourceReference. assetId must be an asset of this
+        project. Evidence upload waits for the upload pipeline (S8-03).
       requestBody:
         required: true
         content:
@@ -420,8 +424,47 @@ paths:
             schema: { $ref: '#/components/schemas/RightsDeclaration' }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '201': { description: Created }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/RightsRecord' } } } }
+    get:
+      tags: [Publications]
+      summary: Rights declarations of a project (project readers and staff)
+      operationId: listRights
+      responses:
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/RightsRecord' } }
+
+  /design-rights/{rightsId}/verification:
+    parameters:
+      - { name: rightsId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Publications]
+      summary: Record a rights verification decision (staff.rights_admin)
+      operationId: verifyRights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [verified, rejected, disputed] }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RightsRecord' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   /design-projects/{id}/submit:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
@@ -440,9 +483,68 @@ paths:
               properties:
                 versionId: { type: string, format: uuid }
                 acceptCreatorTerms: { type: boolean, const: true }
+      description: |
+        Owner only. Needs a design-level rights declaration (not rejected) plus one for every
+        asset (RIGHTS_DECLARATION_REQUIRED), and a machine file of this version whose stitch data
+        validated passed or warning (PASSING_EXPORT_REQUIRED). The project must be a draft with no
+        open publication (409). Accepting the creator terms is recorded with a hashed IP.
       responses:
         '201': { description: Submitted, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
         '422': { description: Missing rights declarations or no passing export, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+
+  /design-projects/{id}/publications:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [Publications]
+      summary: Submission history of a project, newest first (project readers)
+      operationId: listProjectPublications
+      responses:
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Publication' } }
+
+  /design-publications:
+    get:
+      tags: [Publications]
+      summary: Moderation queue (staff.moderator), oldest submission first
+      operationId: listPublications
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [submitted, in_review, changes_requested, approved, rejected, withdrawn, taken_down], default: submitted } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '403': { $ref: '#/components/responses/Error' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/PublicationDetail' } }
+                  page: { $ref: '#/components/schemas/PageInfo' }
+
+  /design-publications/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Publications]
+      summary: A publication with its project, rights and validation (moderators and project readers)
+      operationId: getPublication
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicationDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
 
   /design-publications/{id}/review:
     parameters:
@@ -460,11 +562,13 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [approve, reject, request_changes] }
-                reason: { type: string, maxLength: 1000 }
+                reason: { type: string, maxLength: 1000, description: Required to reject or request changes }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
   /machine-profiles:
     get:
@@ -780,16 +884,57 @@ components:
         modificationAllowed: { type: boolean }
         redistributionAllowed: { type: boolean }
 
+    RightsRecord:
+      type: object
+      required: [id, projectId, assetId, rightsType, declaredBy, verificationStatus, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        assetId: { type: [string, 'null'], format: uuid }
+        rightsType: { type: string, enum: [owned, licensed, commissioned, public_domain] }
+        rightsHolderName: { type: [string, 'null'] }
+        sourceReference: { type: [string, 'null'] }
+        licenseTermsVersion: { type: [string, 'null'] }
+        commercialUseAllowed: { type: boolean }
+        modificationAllowed: { type: boolean }
+        redistributionAllowed: { type: boolean }
+        declaredBy: { type: string, format: uuid }
+        verificationStatus: { type: string, enum: [declared, verified, rejected, disputed] }
+        verifiedBy: { type: [string, 'null'], format: uuid }
+        verifiedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+
     Publication:
       type: object
+      required: [id, projectId, projectVersionId, status, submittedBy, submittedAt]
       properties:
         id: { type: string, format: uuid }
         projectId: { type: string, format: uuid }
         projectVersionId: { type: string, format: uuid }
         status: { type: string, enum: [submitted, in_review, changes_requested, approved, rejected, withdrawn, taken_down] }
+        submittedBy: { type: string, format: uuid }
+        reviewerUserId: { type: [string, 'null'], format: uuid }
         decisionReason: { type: [string, 'null'] }
         submittedAt: { type: string, format: date-time }
         decidedAt: { type: [string, 'null'], format: date-time }
+
+    PublicationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Publication'
+        - type: object
+          required: [project, versionNumber, rights]
+          properties:
+            project:
+              type: object
+              required: [id, title, ownerUserId]
+              properties:
+                id: { type: string, format: uuid }
+                title: { type: string }
+                description: { type: [string, 'null'] }
+                ownerUserId: { type: string, format: uuid }
+            versionNumber: { type: integer }
+            validationStatus: { type: [string, 'null'], enum: [pending, passed, warning, failed, null] }
+            rights: { type: array, items: { $ref: '#/components/schemas/RightsRecord' } }
 
     MachineProfile:
       type: object

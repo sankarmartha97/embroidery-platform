@@ -14,12 +14,9 @@ import { createAuthKit } from '../helpers/jwt.js';
 
 const USER = '0190f0a0-0000-7000-8000-0000000008a1';
 const FRIEND = '0190f0a0-0000-7000-8000-0000000008b1';
-const NOT_IMPLEMENTED = new Set([
-  'POST /design-projects/{id}/rights',
-  'POST /design-projects/{id}/submit',
-  'POST /design-publications/{id}/review',
-  'POST /artifacts/{artifactId}/stitch-outcomes',
-]);
+const MODERATOR = '0190f0a0-0000-7000-8000-0000000008c1';
+const RIGHTS_ADMIN = '0190f0a0-0000-7000-8000-0000000008d1';
+const NOT_IMPLEMENTED = new Set(['POST /artifacts/{artifactId}/stitch-outcomes']);
 
 describe('API contract', () => {
   let pool;
@@ -30,11 +27,17 @@ describe('API contract', () => {
   const checked = new Set();
 
   /** Calls the API and checks the body against the contract for (method, route, status). */
-  async function expectContract(route, method, path, status, { body, headers = {} } = {}) {
+  async function expectContract(
+    route,
+    method,
+    path,
+    status,
+    { body, headers = {}, as = USER } = {},
+  ) {
     const res = await fetch(`${server.url}/api/v1${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${await auth.sign(USER)}`,
+        Authorization: `Bearer ${await auth.sign(as)}`,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
       },
@@ -55,14 +58,18 @@ describe('API contract', () => {
   before(async () => {
     await resetDatabase();
     pool = createTestPool();
-    await insertUsers(pool, USER, FRIEND);
+    await insertUsers(pool, USER, FRIEND, MODERATOR, RIGHTS_ADMIN);
     auth = await createAuthKit();
     s3 = createS3Client();
     store = createArtifactStore({ client: s3, bucket: process.env.S3_BUCKET_ARTIFACTS });
     server = await startApp({
       db: pool,
       verifyToken: auth.verifyToken,
-      roles: { [USER]: ['designer'] },
+      roles: {
+        [USER]: ['designer'],
+        [MODERATOR]: ['staff.moderator'],
+        [RIGHTS_ADMIN]: ['staff.rights_admin'],
+      },
       store,
     });
   });
@@ -258,6 +265,57 @@ describe('API contract', () => {
       'GET',
       `/artifacts/${validated.outputArtifactIds[0]}/report`,
       200,
+    );
+
+    // Rights, submission and moderation (S9-01).
+    const rights = await expectContract(
+      '/design-projects/{id}/rights',
+      'POST',
+      `/design-projects/${id}/rights`,
+      201,
+      { body: { rightsType: 'owned', commercialUseAllowed: true } },
+    );
+    await expectContract(
+      '/design-projects/{id}/rights',
+      'GET',
+      `/design-projects/${id}/rights`,
+      200,
+    );
+    await expectContract(
+      '/design-rights/{rightsId}/verification',
+      'POST',
+      `/design-rights/${rights.id}/verification`,
+      200,
+      { body: { status: 'verified' }, as: RIGHTS_ADMIN },
+    );
+    const submitted = await expectContract(
+      '/design-projects/{id}/submit',
+      'POST',
+      `/design-projects/${id}/submit`,
+      201,
+      { body: { versionId: version.id, acceptCreatorTerms: true } },
+    );
+    await expectContract(
+      '/design-projects/{id}/publications',
+      'GET',
+      `/design-projects/${id}/publications`,
+      200,
+    );
+    await expectContract('/design-publications', 'GET', '/design-publications', 200, {
+      as: MODERATOR,
+    });
+    await expectContract(
+      '/design-publications/{id}',
+      'GET',
+      `/design-publications/${submitted.id}`,
+      200,
+    );
+    await expectContract(
+      '/design-publications/{id}/review',
+      'POST',
+      `/design-publications/${submitted.id}/review`,
+      200,
+      { body: { decision: 'approve' }, as: MODERATOR },
     );
   });
 

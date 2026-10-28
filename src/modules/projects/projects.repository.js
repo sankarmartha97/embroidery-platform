@@ -183,6 +183,23 @@ export function createProjectsRepository(db) {
       return res.affectedRows === 1;
     },
 
+    /** Publication workflow: status, and on approval visibility 'marketplace'. */
+    async setState(id, { status, visibility }) {
+      await db.execute(
+        `UPDATE design_projects SET status = ?, visibility = COALESCE(?, visibility) WHERE id = ?`,
+        [status, visibility ?? null, id],
+      );
+    },
+
+    /** Ids of the project's imported assets (each needs its own rights declaration). */
+    async listAssetIds(projectId) {
+      const [rows] = await db.execute(
+        `SELECT id FROM design_project_assets WHERE project_id = ? ORDER BY created_at, id`,
+        [projectId],
+      );
+      return rows.map((r) => r.id);
+    },
+
     async setCurrentVersion(id, versionId) {
       await db.execute(`UPDATE design_projects SET current_version_id = ? WHERE id = ?`, [
         versionId,

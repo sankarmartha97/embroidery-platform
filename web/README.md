@@ -11,6 +11,7 @@ Start the API and worker first (see the [root README](../README.md)), with your 
 DEV_ROLE_ASSIGNMENTS='{"0190f0a0-0000-7000-8000-00000000de11":["designer"]}' npm run dev
 npm run dev:worker
 npm run -s dev:token            # copy the token
+# a moderator: add "<id>":["staff.moderator"] to DEV_ROLE_ASSIGNMENTS and run dev:token -- <id>
 
 # here
 npm ci
@@ -37,6 +38,8 @@ Open http://localhost:5001 and paste the token on the sign-in page.
 | History      | `HistoryDialog.js`                              | Save a named version; restore any version as the draft (the server keeps the current draft as a checkpoint); duplicate a version into a new project                                                                                                                                                                                               |
 | Sharing      | `ShareDialog.js`                                | Owner only: add a collaborator by user id (email waits for OQ-03), change role and export, remove access                                                                                                                                                                                                                                          |
 | Projects     | `app/projects`                                  | All / Mine / Shared with me tabs; Duplicate on each card                                                                                                                                                                                                                                                                                          |
+| Submit       | `SubmitDialog.js`, `lib/publishing.js`          | Owner: version, rights declaration, checklist (rights, export, validation, terms), submit; status chip shows the moderator's decision                                                                                                                                                                                                             |
+| Moderation   | `app/moderation`                                | `staff.moderator`: queue by status, approve, request changes, reject with an FS-11.1 reason code                                                                                                                                                                                                                                                  |
 
 ## Scripts
 

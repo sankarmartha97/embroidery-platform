@@ -36,3 +36,12 @@ export async function findProjectAccess(db, actor, id) {
   if (!project) return null;
   return { project, collaborator: await repo.findCollaborator(id, actor.userId) };
 }
+
+/** Publication workflow (publications module), on a pool or a transaction connection. */
+export function setProjectState(db, id, state) {
+  return createProjectsRepository(db).setState(id, state);
+}
+
+export function listProjectAssetIds(db, projectId) {
+  return createProjectsRepository(db).listAssetIds(projectId);
+}
