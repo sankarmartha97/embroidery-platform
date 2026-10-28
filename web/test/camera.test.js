@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   actualSize,
+  easeInOut,
   fit,
+  frame,
   gridLevels,
+  lerpCamera,
   MAX_SCALE,
   pan,
   PX_PER_MM,
@@ -75,5 +78,29 @@ describe('camera', () => {
       far.map((t) => t.mm),
       [0, 50, 100, 150, 200],
     );
+  });
+
+  it('frames an object, keeping tiny objects and lines at a readable size', () => {
+    const big = frame(800, 600, { x: 0, y: 0, w: 100, h: 50 });
+    assert.deepEqual(big, fit(800, 600, { x: 0, y: 0, w: 100, h: 50 }));
+    const line = frame(800, 600, { x: 30, y: 80, w: 4, h: 0 });
+    assert.deepEqual(line, fit(800, 600, { x: 22, y: 70, w: 20, h: 20 }));
+    const [cx, cy] = toWorld(line, [400, 300]);
+    close(cx, 32);
+    close(cy, 80);
+  });
+
+  it('glides between cameras: ends exactly, eases, and zooms evenly in log space', () => {
+    const a = { scale: 2, x: 0, y: 0 };
+    const b = { scale: 8, x: -500, y: -300 };
+    assert.deepEqual(lerpCamera(a, b, 0, 800, 600), a);
+    const end = lerpCamera(a, b, 1, 800, 600);
+    close(end.scale, b.scale);
+    close(end.x, b.x);
+    close(end.y, b.y);
+    close(lerpCamera(a, b, 0.5, 800, 600).scale, 4);
+    close(easeInOut(0.5), 0.5);
+    assert.ok(easeInOut(0.1) < 0.1 && easeInOut(0.9) > 0.9);
+    assert.deepEqual(lerpCamera(a, b, 7, 800, 600), end);
   });
 });

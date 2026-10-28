@@ -21,7 +21,6 @@ const CAROL = '0190f0a0-0000-7000-8000-0000000006c0';
 
 // Contract routes with an id that are not built yet (they 404 for everyone today).
 const NOT_IMPLEMENTED = new Set([
-  'POST /design-projects/{id}/duplicate',
   'POST /design-projects/{id}/rights',
   'POST /design-projects/{id}/submit',
   'POST /design-publications/{id}/review',
@@ -65,6 +64,7 @@ describe('IDOR matrix', () => {
     ],
     ['POST /design-projects/{id}/versions', 'POST', `/design-projects/${ids.project}/versions`],
     ['GET /design-projects/{id}/versions', 'GET', `/design-projects/${ids.project}/versions`],
+    ['POST /design-projects/{id}/duplicate', 'POST', `/design-projects/${ids.project}/duplicate`],
     [
       'POST /design-projects/{id}/jobs',
       'POST',

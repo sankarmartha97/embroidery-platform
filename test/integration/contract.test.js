@@ -14,7 +14,6 @@ import { createAuthKit } from '../helpers/jwt.js';
 
 const USER = '0190f0a0-0000-7000-8000-0000000008a1';
 const NOT_IMPLEMENTED = new Set([
-  'POST /design-projects/{id}/duplicate',
   'POST /design-projects/{id}/rights',
   'POST /design-projects/{id}/submit',
   'POST /design-publications/{id}/review',
@@ -128,6 +127,14 @@ describe('API contract', () => {
       'GET',
       `/design-projects/${id}/versions`,
       200,
+    );
+
+    await expectContract(
+      '/design-projects/{id}/duplicate',
+      'POST',
+      `/design-projects/${id}/duplicate`,
+      201,
+      { body: { versionId: version.id, title: 'Contract copy' } },
     );
 
     const exportJob = await expectContract(

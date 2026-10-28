@@ -8,6 +8,15 @@ const VERSION_CREATE = {
   properties: { label: { type: 'string', maxLength: 120 } },
 };
 
+// Inline request schema from openapi.yaml (duplicateProject).
+const DUPLICATE = {
+  type: 'object',
+  properties: {
+    versionId: { type: 'string', format: 'uuid' },
+    title: { type: 'string' },
+  },
+};
+
 const etag = (revision) => `"${revision}"`;
 
 export function createProjectsRouter({ db }) {
@@ -45,6 +54,17 @@ export function createProjectsRouter({ db }) {
 
   router.get('/design-projects/:id/versions', async (req, res) => {
     res.json(await service.listVersions(req.actor, req.params.id, req.query));
+  });
+
+  // Same key + same body → the same copy, still 201 (04-api/conventions.md).
+  router.post('/design-projects/:id/duplicate', validateBody(DUPLICATE), async (req, res) => {
+    const { project } = await service.duplicate(
+      req.actor,
+      req.params.id,
+      req.body,
+      req.get('Idempotency-Key'),
+    );
+    res.status(201).location(`${req.baseUrl}/design-projects/${project.id}`).json(project);
   });
 
   return router;

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   actualSize,
   fit,
+  frame,
   gridLevels,
+  lerpCamera,
   pan,
   PX_PER_MM,
   rulerTicks,
@@ -31,6 +33,7 @@ import { DraftPreview, isNear, NodeEditor } from './drawing.js';
 
 const RULER = 20;
 const DRAG_THRESHOLD_PX = 3;
+const FOCUS_MS = 320; // eased camera move to an issue (06-ui-ux/screen-specifications.md)
 
 /** Node editing works on our own M/L/C/Z paths when the object is at most translated. */
 export function editablePath(object) {
@@ -61,6 +64,7 @@ export default function Canvas({
   onStartEdit,
   onEndEdit,
   onEditPath,
+  focus,
 }) {
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
@@ -98,6 +102,32 @@ export default function Canvas({
   useEffect(() => {
     if (cam) onZoom?.(Math.round((cam.scale / PX_PER_MM) * 100));
   }, [cam, onZoom]);
+
+  // Glide to an object when asked (`focus` is { id, at }; a new `at` repeats the move).
+  const focusFrom = useRef({ cam, size, objects: document.objects });
+  useEffect(() => {
+    focusFrom.current = { cam, size, objects: document.objects };
+  });
+  useEffect(() => {
+    const { cam: start, size: view, objects } = focusFrom.current;
+    const object = focus && objects.find((o) => o.id === focus.id);
+    const bounds = object && objectBounds(object);
+    if (!bounds || !start || !view) return;
+    const target = frame(view.w, view.h, bounds);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setCam(target);
+      return;
+    }
+    let raf;
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = (now - t0) / FOCUS_MS;
+      setCam(lerpCamera(start, target, t, view.w, view.h));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [focus]);
 
   // Non-passive wheel listener so the page does not scroll while zooming.
   useEffect(() => {

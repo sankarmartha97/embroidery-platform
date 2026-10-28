@@ -288,7 +288,7 @@ function NumberField({ label, unit, value, min, max, step, disabled, onCommit })
   );
 }
 
-function Issues({ issues, document, onSelect, onTab }) {
+function Issues({ issues, document, onFocusObject, onTab }) {
   if (!issues)
     return (
       <p className="muted pad">Run Validate to check the design against the machine and hoop.</p>
@@ -326,7 +326,7 @@ function Issues({ issues, document, onSelect, onTab }) {
                     key={id}
                     className="chip"
                     onClick={() => {
-                      onSelect(id);
+                      onFocusObject(id);
                       onTab('properties');
                     }}
                   >

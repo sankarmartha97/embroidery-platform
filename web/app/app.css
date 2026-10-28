@@ -187,10 +187,6 @@ code {
   color: var(--muted);
   font-size: 12px;
 }
-.format-select {
-  width: auto;
-}
-
 .notice {
   grid-area: notice;
   display: flex;
@@ -572,6 +568,47 @@ code {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+/* ---- Export dialog (screen S7) ---- */
+.modal.export-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.export-wide {
+  grid-column: 1 / -1;
+}
+.export-hoop {
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+.export-summary {
+  padding: 12px;
+  font-size: 13px;
+  min-height: 48px;
+}
+.export-progress-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.prog {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+.prog > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease-out;
 }
 .design-object-hit {
   cursor: pointer;

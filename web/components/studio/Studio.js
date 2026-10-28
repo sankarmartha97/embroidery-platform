@@ -10,6 +10,7 @@ import { createHistory, record, redo, reset, undo } from '@/lib/history.js';
 import { pollJob } from '@/lib/jobs.js';
 import Canvas from './Canvas.js';
 import ConflictModal from './ConflictModal.js';
+import ExportDialog from './ExportDialog.js';
 import Inspector from './Inspector.js';
 import JobChip from './JobChip.js';
 import SequencePanel from './SequencePanel.js';
@@ -40,7 +41,8 @@ export default function Studio({ initialProject, formats, profiles }) {
   const [issues, setIssues] = useState(null);
   const [inspectorTab, setInspectorTab] = useState('properties');
   const [notice, setNotice] = useState(null);
-  const [format, setFormat] = useState(() => defaultFormat(formats, profiles, initialProject));
+  const [exporting, setExporting] = useState(false);
+  const [focus, setFocus] = useState(null);
   const autosave = useRef(null);
   const document = history.present;
   const canEdit = project.permissions?.canEdit !== false;
@@ -158,15 +160,20 @@ export default function Studio({ initialProject, formats, profiles }) {
   }
 
   // ---- Jobs: snapshot the draft, queue the job, poll it ----
-  async function runJob(jobType) {
+  /**
+   * Runs a job against a fresh version of the saved draft and resolves with the final job.
+   * Failures resolve as a failed job; an unsaved draft throws.
+   */
+  async function startJob(jobType, { machineProfileId, targetFormat, onUpdate } = {}) {
     setNotice(null);
     await autosave.current.flush();
     const status = autosave.current.getState().status;
-    if (status !== STATUS.SAVED) {
-      setNotice(`Save the design first (${STATUS_LABEL[status]}).`);
-      return;
-    }
-    const update = (job) => setJobs((all) => ({ ...all, [jobType]: job }));
+    if (status !== STATUS.SAVED)
+      throw new Error(`Save the design first (${STATUS_LABEL[status]}).`);
+    const update = (job) => {
+      setJobs((all) => ({ ...all, [jobType]: job }));
+      onUpdate?.(job);
+    };
     try {
       const { data: version } = await apiFetch(`/design-projects/${projectId}/versions`, {
         method: 'POST',
@@ -174,40 +181,63 @@ export default function Studio({ initialProject, formats, profiles }) {
       });
       const body = { jobType, versionId: version.id };
       if (jobType !== 'digitize') body.digitizeIfMissing = true;
-      if (jobType === 'export') body.targetFormat = format;
+      if (machineProfileId) body.machineProfileId = machineProfileId;
+      if (targetFormat) body.targetFormat = targetFormat;
       const { data: job } = await apiFetch(`/design-projects/${projectId}/jobs`, {
         method: 'POST',
         body,
         headers: { 'Idempotency-Key': newIdempotencyKey() },
       });
       update(job);
-      const done = await pollJob(job.id, {
+      return await pollJob(job.id, {
         getJob: async (id) => (await apiFetch(`/digitizing-jobs/${id}`)).data,
         onUpdate: update,
       });
-      if (done.status !== 'succeeded') return;
-
-      if (jobType === 'validate') {
-        const { data: report } = await apiFetch(`/artifacts/${done.outputArtifactIds[0]}/report`);
-        setIssues(report);
-        setInspectorTab('issues');
-      } else if (jobType === 'export') {
-        const { data: link } = await apiFetch(
-          `/artifacts/${done.outputArtifactIds[0]}/download-url`,
-          {
-            method: 'POST',
-          },
-        );
-        window.location.assign(link.url);
-      }
     } catch (err) {
-      update({
+      const failed = {
         status: 'failed',
         jobType,
         error: { code: err.code ?? 'ERROR', summary: err.message },
         correlationId: err.correlationId,
-      });
+      };
+      update(failed);
+      return failed;
     }
+  }
+
+  const readReport = async (job) =>
+    (await apiFetch(`/artifacts/${job.outputArtifactIds[0]}/report`)).data;
+
+  async function download(job) {
+    const { data: link } = await apiFetch(`/artifacts/${job.outputArtifactIds[0]}/download-url`, {
+      method: 'POST',
+    });
+    window.location.assign(link.url);
+  }
+
+  const cancelJob = (job) =>
+    apiFetch(`/digitizing-jobs/${job.id}/cancel`, { method: 'POST' }).catch((err) =>
+      setNotice(err.message),
+    );
+
+  function showIssues(report) {
+    setIssues(report);
+    setInspectorTab('issues');
+  }
+
+  async function runJob(jobType) {
+    try {
+      const done = await startJob(jobType);
+      if (done.status === 'succeeded' && jobType === 'validate') showIssues(await readReport(done));
+    } catch (err) {
+      setNotice(err.message);
+    }
+  }
+
+  /** Issues panel: select the object and glide the camera to it. */
+  function focusObject(id) {
+    setSelectedId(id);
+    setFocus({ id, at: Date.now() });
   }
 
   async function changeProfile(machineProfileId) {
@@ -294,22 +324,10 @@ export default function Studio({ initialProject, formats, profiles }) {
           >
             Validate{issues ? ` (${issues.issues.length})` : ''}
           </button>
-          <select
-            className="select format-select"
-            value={format}
-            onChange={(e) => setFormat(e.target.value)}
-            aria-label="Export format"
-          >
-            {formats.map((f) => (
-              <option key={f.code} value={f.code}>
-                {f.code}
-              </option>
-            ))}
-          </select>
           <button
             className="btn btn-primary"
-            onClick={() => runJob('export')}
-            disabled={busy || !project.permissions?.canExport || !format}
+            onClick={() => setExporting(true)}
+            disabled={busy || !project.permissions?.canExport || formats.length === 0}
           >
             Export
           </button>
@@ -364,6 +382,7 @@ export default function Studio({ initialProject, formats, profiles }) {
           onStartEdit={startEditing}
           onEndEdit={() => setEditingId(null)}
           onEditPath={(id, d, closed) => edit((doc) => setPath(doc, id, d, closed))}
+          focus={focus}
         />
       </main>
 
@@ -373,6 +392,7 @@ export default function Studio({ initialProject, formats, profiles }) {
         document={document}
         selectedId={selectedId}
         onSelect={setSelectedId}
+        onFocusObject={focusObject}
         onEdit={edit}
         canEdit={canEdit}
         issues={issues}
@@ -383,14 +403,27 @@ export default function Studio({ initialProject, formats, profiles }) {
         onEditPoints={(id) => (editingId === id ? setEditingId(null) : startEditing(id))}
       />
 
+      {exporting && (
+        <ExportDialog
+          document={document}
+          formats={formats}
+          profiles={profiles}
+          profileId={project.machineProfileId}
+          runJob={startJob}
+          cancelJob={cancelJob}
+          readReport={readReport}
+          download={download}
+          onShowIssues={(report) => {
+            showIssues(report);
+            setExporting(false);
+          }}
+          onClose={() => setExporting(false)}
+        />
+      )}
+
       {save.status === STATUS.CONFLICT && (
         <ConflictModal onReload={reloadTheirs} onSaveMine={saveMineAsVersion} />
       )}
     </div>
   );
-}
-
-function defaultFormat(formats, profiles, project) {
-  const profileFormat = profiles.find((p) => p.id === project.machineProfileId)?.format;
-  return formats.find((f) => f.code === profileFormat)?.code ?? formats[0]?.code ?? '';
 }
