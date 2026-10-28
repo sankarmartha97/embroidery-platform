@@ -398,6 +398,200 @@ describe('projects API', () => {
     });
   });
 
+  describe('restore (S8-01)', () => {
+    const restore = (user, id, versionId, revision) =>
+      call(user, 'POST', `/design-projects/${id}/versions/${versionId}/restore`, {
+        headers: { 'If-Match': `"${revision}"` },
+      });
+
+    it('makes the version the draft and snapshots the current draft first', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+      const changed = heartDocument({ canvas: { width: 90, height: 90 } });
+      await saveDraft(DESIGNER, project.id, 1, changed);
+
+      const res = await restore(DESIGNER, project.id, v1.body.id, 2);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.draftRevision, 3);
+      assert.equal(res.headers.get('etag'), '"3"');
+
+      const detail = await call(DESIGNER, 'GET', `/design-projects/${project.id}`);
+      assert.equal(detail.body.draft.canvas.width, heartDocument().canvas.width);
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${project.id}/versions`);
+      const [checkpoint] = versions.body.data;
+      assert.equal(checkpoint.versionNumber, 2);
+      assert.equal(checkpoint.reason, 'checkpoint');
+      assert.equal(checkpoint.label, 'Before restoring version 1');
+      assert.equal(detail.body.currentVersionId, checkpoint.id);
+
+      // The changed draft is kept in the checkpoint: restoring it brings it back.
+      const back = await restore(DESIGNER, project.id, checkpoint.id, 3);
+      assert.equal(back.status, 200);
+      const again = await call(DESIGNER, 'GET', `/design-projects/${project.id}`);
+      assert.equal(again.body.draft.canvas.width, 90);
+    });
+
+    it('does not snapshot a draft that equals the latest version', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+      assert.equal((await restore(DESIGNER, project.id, v1.body.id, 1)).status, 200);
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${project.id}/versions`);
+      assert.equal(versions.body.data.length, 1);
+    });
+
+    it('checks If-Match, the version, and edit rights', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+
+      const stale = await restore(DESIGNER, project.id, v1.body.id, 0);
+      assert.equal(stale.status, 409);
+      assert.equal(stale.body.error.code, 'DRAFT_CONFLICT');
+      const noHeader = await call(
+        DESIGNER,
+        'POST',
+        `/design-projects/${project.id}/versions/${v1.body.id}/restore`,
+      );
+      assert.equal(noHeader.status, 400);
+
+      const other = await createProject();
+      await saveDraft(DESIGNER, other.id, 0, heartDocument());
+      const foreign = await call(DESIGNER, 'POST', `/design-projects/${other.id}/versions`);
+      assert.equal((await restore(DESIGNER, project.id, foreign.body.id, 1)).status, 404);
+      assert.equal((await restore(DESIGNER, project.id, 'not-a-uuid', 1)).status, 404);
+
+      await addCollaborator(project.id, VIEWER, 'viewer');
+      assert.equal((await restore(VIEWER, project.id, v1.body.id, 1)).status, 403);
+      await addCollaborator(project.id, EDITOR, 'editor');
+      assert.equal((await restore(EDITOR, project.id, v1.body.id, 1)).status, 200);
+      assert.equal((await restore(STRANGER, project.id, v1.body.id, 2)).status, 404);
+    });
+  });
+
+  describe('duplicate (S7-05)', () => {
+    const duplicate = (user, id, { body, key } = {}) =>
+      call(user, 'POST', `/design-projects/${id}/duplicate`, {
+        body,
+        headers: key ? { 'Idempotency-Key': key } : {},
+      });
+
+    it('copies the current draft into a new private project with version 1', async () => {
+      const source = await createProject(DESIGNER, {
+        title: 'Rose',
+        machineProfileId: BROTHER_5X7,
+      });
+      await saveDraft(DESIGNER, source.id, 0, heartDocument());
+
+      const res = await duplicate(DESIGNER, source.id);
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.equal(res.headers.get('location'), `/api/v1/design-projects/${res.body.id}`);
+      assert.notEqual(res.body.id, source.id);
+      assert.equal(res.body.title, 'Copy of Rose');
+      assert.equal(res.body.ownerUserId, DESIGNER);
+      assert.equal(res.body.visibility, 'private');
+      assert.equal(res.body.status, 'draft');
+      assert.equal(res.body.draftRevision, 0);
+      assert.equal(res.body.machineProfileId, BROTHER_5X7);
+
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${res.body.id}/versions`);
+      assert.equal(versions.body.data.length, 1);
+      assert.equal(versions.body.data[0].versionNumber, 1);
+      assert.equal(versions.body.data[0].reason, 'duplicate');
+      assert.equal(versions.body.data[0].id, res.body.currentVersionId);
+
+      const copy = await call(DESIGNER, 'GET', `/design-projects/${res.body.id}`);
+      assert.deepEqual(
+        copy.body.draft.objects.map((o) => o.id),
+        heartDocument().objects.map((o) => o.id),
+      );
+      const [[row]] = await pool.execute(
+        'SELECT duplicated_from_project_id FROM design_projects WHERE id = ?',
+        [res.body.id],
+      );
+      assert.equal(row.duplicated_from_project_id, source.id);
+    });
+
+    it('copies a chosen version, not the newer draft, and takes a title', async () => {
+      const source = await createProject();
+      await saveDraft(DESIGNER, source.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${source.id}/versions`);
+      await saveDraft(DESIGNER, source.id, 1, heartDocument({ canvas: { width: 90, height: 90 } }));
+
+      const res = await duplicate(DESIGNER, source.id, {
+        body: { versionId: v1.body.id, title: '  From v1  ' },
+      });
+      assert.equal(res.status, 201);
+      assert.equal(res.body.title, 'From v1');
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${res.body.id}/versions`);
+      assert.equal(versions.body.data[0].documentSha256, v1.body.documentSha256);
+    });
+
+    it('rejects a version of another project and unknown fields', async () => {
+      const source = await createProject();
+      const other = await createProject();
+      await saveDraft(DESIGNER, other.id, 0, heartDocument());
+      const foreign = await call(DESIGNER, 'POST', `/design-projects/${other.id}/versions`);
+
+      const res = await duplicate(DESIGNER, source.id, { body: { versionId: foreign.body.id } });
+      assert.equal(res.status, 422);
+      assert.equal(res.body.error.details[0].path, '/versionId');
+      assert.equal((await duplicate(DESIGNER, source.id, { body: { rights: [] } })).status, 422);
+      assert.equal(
+        (await duplicate(DESIGNER, source.id, { body: { title: 'x'.repeat(201) } })).status,
+        422,
+      );
+    });
+
+    it('lets a viewer copy into a project of their own; strangers and customers cannot', async () => {
+      const source = await createProject();
+      await addCollaborator(source.id, VIEWER, 'viewer');
+
+      const res = await duplicate(VIEWER, source.id);
+      assert.equal(res.status, 201);
+      assert.equal(res.body.ownerUserId, VIEWER);
+      assert.equal((await call(DESIGNER, 'GET', `/design-projects/${res.body.id}`)).status, 404);
+
+      assert.equal((await duplicate(STRANGER, source.id)).status, 404);
+      assert.equal((await duplicate(CUSTOMER, source.id)).status, 403);
+    });
+
+    it('replays the same Idempotency-Key and rejects it with a different body', async () => {
+      const source = await createProject();
+      const first = await duplicate(DESIGNER, source.id, { body: { title: 'Once' }, key: 'dup-1' });
+      const again = await duplicate(DESIGNER, source.id, { body: { title: 'Once' }, key: 'dup-1' });
+      assert.equal(first.status, 201);
+      assert.equal(again.status, 201);
+      assert.equal(again.body.id, first.body.id);
+
+      const changed = await duplicate(DESIGNER, source.id, {
+        body: { title: 'Twice' },
+        key: 'dup-1',
+      });
+      assert.equal(changed.status, 409);
+      assert.equal(changed.body.error.code, 'IDEMPOTENCY_KEY_REUSED');
+
+      // Keys are per user.
+      await addCollaborator(source.id, EDITOR, 'editor');
+      const theirs = await duplicate(EDITOR, source.id, { body: { title: 'Once' }, key: 'dup-1' });
+      assert.equal(theirs.status, 201);
+      assert.notEqual(theirs.body.id, first.body.id);
+    });
+
+    it('makes one copy when the same key arrives twice at once', async () => {
+      const source = await createProject();
+      const results = await Promise.all(
+        [1, 2, 3].map(() => duplicate(DESIGNER, source.id, { key: 'dup-race' })),
+      );
+      assert.deepEqual(
+        results.map((r) => r.status),
+        [201, 201, 201],
+      );
+      assert.equal(new Set(results.map((r) => r.body.id)).size, 1);
+    });
+  });
+
   describe('list', () => {
     const OWNER = '0190f0a0-0000-7000-8000-0000000000b1';
     const SHARER = '0190f0a0-0000-7000-8000-0000000000b2';

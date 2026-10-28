@@ -44,6 +44,10 @@ export function contractErrors(method, route, status, body) {
     compiled.set(key, schema ? ajv.compile(rebase(schema)) : null);
   }
   const validate = compiled.get(key);
-  if (!validate) return [`${key} has no response schema in the contract`];
+  if (!validate) {
+    // 204 No Content has no schema: the body must be empty.
+    if (status === 204) return body === null ? [] : [`${key} must have no body`];
+    return [`${key} has no response schema in the contract`];
+  }
   return validate(body) ? [] : validate.errors.map((e) => `${e.instancePath || '/'} ${e.message}`);
 }

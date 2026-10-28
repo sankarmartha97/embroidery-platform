@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import { transaction } from '../../db/transaction.js';
 import { errors } from '../../http/errors.js';
 import { decodeCursor, parseEnum, parseLimit, toPage } from '../../http/pagination.js';
 import {
   canonicalize,
+  canonicalJson,
   emptyDocument,
   validateDocument,
 } from '../../lib/document/validate-document.js';
@@ -41,6 +43,27 @@ function toResponse(p) {
 function assertEditableState(project) {
   if (project.status === 'archived') throw errors.invalidState('Archived projects are read-only.');
 }
+
+const TITLE_MAX = 200;
+
+/** Optional on POSTs other than job creation (04-api/conventions.md). */
+function parseOptionalIdempotencyKey(raw) {
+  if (raw === undefined) return null;
+  const key = raw.trim();
+  if (!key || key.length > 128) {
+    throw errors.badRequest('Idempotency-Key header must be 1–128 characters.');
+  }
+  return key;
+}
+
+/** Same key + same request → same copy. The fingerprint covers the source project and body. */
+function fingerprint(projectId, input) {
+  return createHash('sha256')
+    .update(canonicalJson({ projectId, ...input }))
+    .digest('hex');
+}
+
+const isDuplicateKey = (err) => err?.code === 'ER_DUP_ENTRY';
 
 function parseIfMatch(header) {
   const m = /^\s*(?:W\/)?"?(\d+)"?\s*$/.exec(header ?? '');
@@ -205,6 +228,147 @@ export function createProjectsService({ db }) {
         await versions.insert({ ...version, documentJson: json });
         await projects.setCurrentVersion(id, version.id);
         return { version, created: true };
+      });
+    },
+
+    /**
+     * Copies a version (or, without versionId, the current draft) into a new private project
+     * owned by the caller. The copy starts with version 1 (reason 'duplicate'). Rights
+     * declarations are not copied (07-security-licensing/intellectual-property.md).
+     * @returns {Promise<{ project: object, created: boolean }>}
+     */
+    async duplicate(actor, id, input = {}, rawKey) {
+      if (!canCreateProject(actor)) throw errors.forbidden();
+      const key = parseOptionalIdempotencyKey(rawKey);
+      const repo = createProjectsRepository(db);
+      const { project: source } = await loadReadableWith(repo, actor, id, { withDraft: true });
+
+      const requestSha256 = key ? fingerprint(id, input) : null;
+      async function replay() {
+        const existing = await repo.findByDuplicateKey(actor.userId, key);
+        if (!existing) return null;
+        if (existing.requestSha256 !== requestSha256) throw errors.idempotencyKeyReused();
+        return toResponse(existing);
+      }
+      if (key) {
+        const replayed = await replay();
+        if (replayed) return { project: replayed, created: false };
+      }
+
+      let sourceDocument = source.draft;
+      if (input.versionId) {
+        const version = await createVersionsRepository(db).findWithDocument(input.versionId);
+        if (!version || version.projectId !== id) {
+          throw errors.validation([
+            { path: '/versionId', issue: 'is not a version of this project' },
+          ]);
+        }
+        sourceDocument = version.document;
+      }
+      if (!sourceDocument) {
+        throw errors.validation([{ path: '/draft', issue: 'project has no draft to copy' }]);
+      }
+      const issues = validateDocument(sourceDocument);
+      if (issues.length) throw errors.validation(issues, 'The source document is not valid.');
+
+      const title = input.title?.trim() || `Copy of ${source.title}`.slice(0, TITLE_MAX);
+      if (title.length > TITLE_MAX) {
+        throw errors.validation([
+          { path: '/title', issue: `is longer than ${TITLE_MAX} characters` },
+        ]);
+      }
+      // A "My Machine" profile of another user is not the caller's to use.
+      const profile = source.machineProfileId
+        ? await createReferenceRepository(db).findMachineProfile(
+            source.machineProfileId,
+            actor.userId,
+          )
+        : null;
+
+      const { json, sha256, document } = canonicalize(sourceDocument);
+      const copy = {
+        id: newId(),
+        ownerUserId: actor.userId,
+        title,
+        description: source.description,
+        machineProfileId: profile?.id ?? null,
+        draft: document,
+        duplicatedFromProjectId: id,
+        idempotencyKey: key,
+        requestSha256,
+      };
+      try {
+        await transaction(db, async (conn) => {
+          const projects = createProjectsRepository(conn);
+          await projects.insertDuplicate(copy);
+          const versionId = newId();
+          await createVersionsRepository(conn).insert({
+            id: versionId,
+            projectId: copy.id,
+            versionNumber: 1,
+            documentSchemaVersion: document.schemaVersion,
+            documentJson: json,
+            documentSha256: sha256,
+            label: null,
+            reason: 'duplicate',
+            createdBy: actor.userId,
+            createdAt: new Date(),
+          });
+          await projects.setCurrentVersion(copy.id, versionId);
+        });
+      } catch (err) {
+        // A concurrent request with the same key won the insert.
+        if (!key || !isDuplicateKey(err)) throw err;
+        const winner = await replay();
+        if (!winner) throw err;
+        return { project: winner, created: false };
+      }
+      return { project: toResponse(await repo.findById(copy.id)), created: true };
+    },
+
+    /**
+     * Restores a version as the draft: a new head (FS-7.9). The current draft is snapshotted
+     * first (reason 'checkpoint', deduplicated against the latest version), so nothing is lost.
+     */
+    async restoreVersion(actor, id, versionId, ifMatch) {
+      const expected = parseIfMatch(ifMatch);
+      return transaction(db, async (conn) => {
+        const projects = createProjectsRepository(conn);
+        const versions = createVersionsRepository(conn);
+        const { project, collaborator } = await loadReadableWith(projects, actor, id, {
+          withDraft: true,
+          forUpdate: true,
+        });
+        if (!canEditDraft(actor, project, collaborator)) throw errors.forbidden();
+        assertEditableState(project);
+
+        const version = UUID.test(versionId) && (await versions.findWithDocument(versionId));
+        if (!version || version.projectId !== id) throw errors.notFound();
+        if (project.draftRevision !== expected) throw errors.draftConflict(project.draftRevision);
+
+        if (project.draft && validateDocument(project.draft).length === 0) {
+          const { json, sha256, document } = canonicalize(project.draft);
+          const latest = await versions.latest(id);
+          if (!latest || latest.documentSha256 !== sha256) {
+            const checkpoint = {
+              id: newId(),
+              projectId: id,
+              versionNumber: (latest?.versionNumber ?? 0) + 1,
+              documentSchemaVersion: document.schemaVersion,
+              documentSha256: sha256,
+              documentJson: json,
+              label: `Before restoring version ${version.versionNumber}`,
+              reason: 'checkpoint',
+              createdBy: actor.userId,
+              createdAt: new Date(),
+            };
+            await versions.insert(checkpoint);
+            await projects.setCurrentVersion(id, checkpoint.id);
+          }
+        }
+        // The row is locked and the revision checked, so this write cannot be stale.
+        await projects.saveDraft(id, expected, version.document);
+        return { draftRevision: expected + 1 };
       });
     },
 

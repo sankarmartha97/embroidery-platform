@@ -17,7 +17,7 @@ describe('migrations', () => {
   after(() => pool.end());
 
   it('builds the full schema from an empty database', async () => {
-    assert.equal(firstRun.applied.length, 4);
+    assert.equal(firstRun.applied.length, 5);
     const [[column]] = await pool.query(
       `SELECT is_nullable AS n FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'digitizing_jobs'

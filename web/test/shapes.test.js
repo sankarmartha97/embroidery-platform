@@ -17,6 +17,7 @@ import {
   penPath,
   polygonPath,
   rectPath,
+  setPath,
   smoothNode,
 } from '../lib/shapes.js';
 
@@ -118,6 +119,20 @@ describe('shape paths', () => {
     }
   });
 
+  it('writes nothing for no nodes, and leaves a two-node path open even when asked to close', () => {
+    assert.equal(penPath([], true), '');
+    assert.equal(
+      penPath(
+        [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+        true,
+      ),
+      'M0 0 L10 0',
+    );
+  });
+
   it('moves a node with its handles, and mirrors a moved handle', () => {
     const nodes = [smoothNode([10, 10], [15, 10])];
     const moved = moveNode(nodes, 0, [20, 20]);
@@ -206,5 +221,23 @@ describe('adding shapes to the document', () => {
     assert.equal(document.objects[1].sequence, 5);
     assert.equal(document.objects[1].stitch.threadId, 'gold');
     assert.equal(document.threads.length, 2, 'existing threads kept');
+  });
+
+  it('replaces only the edited object path, keeping closed unless told otherwise', () => {
+    let doc = addShape(empty(), {
+      kind: 'rect',
+      d: rectPath({ x: 0, y: 0, w: 10, h: 10 }),
+      closed: true,
+    }).document;
+    doc = addShape(doc, { kind: 'pen', d: 'M0 0 L5 5', closed: false }).document;
+    const edited = setPath(doc, 'obj-1', 'M0 0 L20 0 L20 20 Z');
+    assert.deepEqual(edited.objects[0].geometry, {
+      kind: 'path',
+      d: 'M0 0 L20 0 L20 20 Z',
+      closed: true,
+    });
+    assert.equal(edited.objects[1], doc.objects[1], 'other objects untouched');
+    assert.equal(setPath(doc, 'obj-2', 'M0 0 L5 5 L0 5 Z', true).objects[1].geometry.closed, true);
+    assert.deepEqual(validateDocument(edited), []);
   });
 });

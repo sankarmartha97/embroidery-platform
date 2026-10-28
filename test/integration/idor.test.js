@@ -18,10 +18,10 @@ import { createAuthKit } from '../helpers/jwt.js';
 const ALICE = '0190f0a0-0000-7000-8000-0000000006a1';
 const BOB = '0190f0a0-0000-7000-8000-0000000006b0';
 const CAROL = '0190f0a0-0000-7000-8000-0000000006c0';
+const DAVE = '0190f0a0-0000-7000-8000-0000000006d0';
 
 // Contract routes with an id that are not built yet (they 404 for everyone today).
 const NOT_IMPLEMENTED = new Set([
-  'POST /design-projects/{id}/duplicate',
   'POST /design-projects/{id}/rights',
   'POST /design-projects/{id}/submit',
   'POST /design-publications/{id}/review',
@@ -66,6 +66,35 @@ describe('IDOR matrix', () => {
     ['POST /design-projects/{id}/versions', 'POST', `/design-projects/${ids.project}/versions`],
     ['GET /design-projects/{id}/versions', 'GET', `/design-projects/${ids.project}/versions`],
     [
+      'POST /design-projects/{id}/versions/{versionId}/restore',
+      'POST',
+      `/design-projects/${ids.project}/versions/${ids.version}/restore`,
+      { headers: { 'If-Match': '"1"' } },
+    ],
+    ['POST /design-projects/{id}/duplicate', 'POST', `/design-projects/${ids.project}/duplicate`],
+    [
+      'GET /design-projects/{id}/collaborators',
+      'GET',
+      `/design-projects/${ids.project}/collaborators`,
+    ],
+    [
+      'POST /design-projects/{id}/collaborators',
+      'POST',
+      `/design-projects/${ids.project}/collaborators`,
+      { body: { userId: DAVE, role: 'viewer' } },
+    ],
+    [
+      'PATCH /design-projects/{id}/collaborators/{userId}',
+      'PATCH',
+      `/design-projects/${ids.project}/collaborators/${DAVE}`,
+      { body: { canExport: true } },
+    ],
+    [
+      'DELETE /design-projects/{id}/collaborators/{userId}',
+      'DELETE',
+      `/design-projects/${ids.project}/collaborators/${DAVE}`,
+    ],
+    [
       'POST /design-projects/{id}/jobs',
       'POST',
       `/design-projects/${ids.project}/jobs`,
@@ -89,7 +118,7 @@ describe('IDOR matrix', () => {
   before(async () => {
     await resetDatabase();
     pool = createTestPool();
-    await insertUsers(pool, ALICE, BOB, CAROL);
+    await insertUsers(pool, ALICE, BOB, CAROL, DAVE);
     auth = await createAuthKit();
     s3 = createS3Client();
     const store = createArtifactStore({ client: s3, bucket: process.env.S3_BUCKET_ARTIFACTS });
@@ -201,18 +230,19 @@ describe('IDOR matrix', () => {
   });
 
   it('SEC-T05: a revoked collaborator loses access immediately', async () => {
-    await pool.execute(
-      `INSERT INTO design_collaborators (id, project_id, user_id, role, invited_by)
-       VALUES (UUID(), ?, ?, 'editor', ?)`,
-      [ids.project, CAROL, ALICE],
-    );
+    const invite = await call(ALICE, 'POST', `/design-projects/${ids.project}/collaborators`, {
+      body: { userId: CAROL, role: 'editor' },
+    });
+    assert.equal(invite.status, 201, invite.body);
     assert.equal((await call(CAROL, 'GET', `/design-projects/${ids.project}`)).status, 200);
     assert.ok((await call(CAROL, 'GET', '/design-projects')).body.includes(ids.project));
 
-    await pool.execute(
-      `UPDATE design_collaborators SET revoked_at = CURRENT_TIMESTAMP(3) WHERE project_id = ? AND user_id = ?`,
-      [ids.project, CAROL],
+    const revoke = await call(
+      ALICE,
+      'DELETE',
+      `/design-projects/${ids.project}/collaborators/${CAROL}`,
     );
+    assert.equal(revoke.status, 204);
     for (const [route, method, path, options] of matrix()) {
       const res = await call(CAROL, method, path, options);
       assert.equal(res.status, 404, `${route} after revoke → ${res.status}`);

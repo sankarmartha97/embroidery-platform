@@ -34,6 +34,38 @@ export function fit(viewW, viewH, rect, padding = 48) {
   };
 }
 
+/**
+ * Frames an object: fits its bounds, grown to at least `minMm` on each side so a tiny object
+ * (or a line, h = 0) does not zoom to the maximum.
+ */
+export function frame(viewW, viewH, rect, minMm = 20) {
+  const w = Math.max(rect.w, minMm);
+  const h = Math.max(rect.h, minMm);
+  return fit(viewW, viewH, {
+    x: rect.x + rect.w / 2 - w / 2,
+    y: rect.y + rect.h / 2 - h / 2,
+    w,
+    h,
+  });
+}
+
+/** Ease-in-out cubic on t in [0, 1]. */
+export const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+/**
+ * Camera at time t in [0, 1] of a move from `a` to `b`. Zoom is interpolated in log space, and
+ * the mm point at the viewport centre moves linearly, so the move reads as one smooth glide.
+ */
+export function lerpCamera(a, b, t, viewW, viewH) {
+  const k = easeInOut(Math.min(1, Math.max(0, t)));
+  const scale = Math.exp(Math.log(a.scale) + (Math.log(b.scale) - Math.log(a.scale)) * k);
+  const [ax, ay] = toWorld(a, [viewW / 2, viewH / 2]);
+  const [bx, by] = toWorld(b, [viewW / 2, viewH / 2]);
+  const cx = ax + (bx - ax) * k;
+  const cy = ay + (by - ay) * k;
+  return { scale, x: viewW / 2 - cx * scale, y: viewH / 2 - cy * scale };
+}
+
 /** 1:1 physical size (96 dpi), centred on a mm point. */
 export function actualSize(viewW, viewH, [cx, cy]) {
   return { scale: PX_PER_MM, x: viewW / 2 - cx * PX_PER_MM, y: viewH / 2 - cy * PX_PER_MM };

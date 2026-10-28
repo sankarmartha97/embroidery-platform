@@ -132,7 +132,10 @@ test.describe('Studio', () => {
     );
     const issue = page.locator('.issue').filter({ hasText: 'MISSING_TRIM' });
     await expect(issue).toBeVisible();
+    const zoomBefore = await page.getByLabel('Zoom', { exact: true }).textContent();
     await issue.getByRole('button', { name: 'underline' }).click();
+    // The camera glides to the object (a 320 ms eased move), so the zoom changes.
+    await expect(page.getByLabel('Zoom', { exact: true })).not.toHaveText(zoomBefore);
     await expect(page.getByRole('tab', { name: 'Properties' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -141,13 +144,38 @@ test.describe('Studio', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/studio.png` });
   });
 
-  test('exports a DST file and downloads it', async () => {
-    await page.getByLabel('Export format').selectOption('DST');
-    const download = page.waitForEvent('download', { timeout: 30_000 });
+  test('exports a DST file through the export dialog and downloads it', async () => {
     await page.getByRole('button', { name: 'Export' }).click();
+    const dialog = page.getByTestId('export-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('status').filter({ hasText: /fits/ })).toBeVisible();
+    await dialog.getByLabel('Format').selectOption('DST');
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+
+    // The heart has a MISSING_TRIM warning: the pre-export check asks before exporting.
+    await expect(dialog.getByTestId('export-summary')).toContainText('1 warning', {
+      timeout: 30_000,
+    });
+    const download = page.waitForEvent('download', { timeout: 30_000 });
+    await dialog.getByRole('button', { name: 'Export anyway' }).click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/^e2e-heart-\d+-v\d+\.dst$/);
     await expect(page.getByTestId('job-export')).toContainText('Done');
+    await expect(dialog).toBeHidden();
+  });
+
+  test('cancels an export from the dialog', async () => {
+    await page.getByRole('button', { name: 'Export' }).click();
+    const dialog = page.getByTestId('export-dialog');
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+    const cancel = dialog.getByRole('button', { name: 'Cancel' });
+    await expect(cancel).toBeEnabled({ timeout: 10_000 });
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/export-dialog.png` });
+    await cancel.click();
+    await expect(page.getByTestId('job-validate')).toContainText('Cancelled', { timeout: 10_000 });
+    await expect(dialog.getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test('logged no errors in the browser console', () => {

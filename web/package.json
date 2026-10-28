@@ -8,9 +8,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p 5001",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "next start -p 5001",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "node --test --test-reporter=spec \"test/**/*.test.js\"",

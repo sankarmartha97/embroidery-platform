@@ -14,10 +14,10 @@ npm run -s dev:token            # copy the token
 
 # here
 npm ci
-npm run dev                     # http://localhost:3001, API at http://127.0.0.1:3000 (API_ORIGIN)
+npm run dev                     # http://localhost:5001, API at http://127.0.0.1:3000 (API_ORIGIN)
 ```
 
-Open http://localhost:3001 and paste the token on the sign-in page.
+Open http://localhost:5001 and paste the token on the sign-in page.
 
 ## How it is put together
 
@@ -32,13 +32,17 @@ Open http://localhost:3001 and paste the token on the sign-in page.
 | Node editing | `Canvas.js` (`NodeEditor`)                      | Double-click a drawn shape, or "Edit points" in the inspector: drag squares to move points, circles to bend curves. Works on M/L/C/Z paths (rectangles, polygons, pen paths); ellipses keep their arcs                                                                                                                                            |
 | Editing      | `lib/document.js`, `lib/history.js`             | Pure edit commands; undo/redo ≥ 200 steps. Geometry uses the same SVG path parser as the API validator (`../src/lib`)                                                                                                                                                                                                                             |
 | Autosave     | `lib/autosave.js`                               | 2 s debounce, 30 s max wait, `If-Match`; Saved · Saving… · Offline (retrying) · Conflict                                                                                                                                                                                                                                                          |
-| Jobs         | `lib/jobs.js`, `JobChip.js`                     | Snapshot → job with `Idempotency-Key` → poll 1 s/2 s/5 s; validate shows issues by object, export downloads the file                                                                                                                                                                                                                              |
+| Jobs         | `lib/jobs.js`, `JobChip.js`                     | Snapshot → job with `Idempotency-Key` → poll 1 s/2 s/5 s; validate shows issues by object; clicking an object in an issue glides the camera to it                                                                                                                                                                                                 |
+| Export       | `ExportDialog.js`, `lib/exporting.js`           | Machine, format (native pre-selected, enabled formats only), hoop fit; a validate job runs first: errors block, warnings need "Export anyway"; staged progress with Cancel, then the download                                                                                                                                                     |
+| History      | `HistoryDialog.js`                              | Save a named version; restore any version as the draft (the server keeps the current draft as a checkpoint); duplicate a version into a new project                                                                                                                                                                                               |
+| Sharing      | `ShareDialog.js`                                | Owner only: add a collaborator by user id (email waits for OQ-03), change role and export, remove access                                                                                                                                                                                                                                          |
+| Projects     | `app/projects`                                  | All / Mine / Shared with me tabs; Duplicate on each card                                                                                                                                                                                                                                                                                          |
 
 ## Scripts
 
 | Script                        | What it does                                                                       |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
-| `npm run dev`                 | Dev server on port 3001                                                            |
+| `npm run dev`                 | Dev server on port 5001                                                            |
 | `npm run build` / `npm start` | Production build and server (dev sign-in is off)                                   |
 | `npm test`                    | Unit tests for the pure modules (`node:test`)                                      |
 | `npm run e2e`                 | Playwright against a running stack; needs `E2E_TOKEN` (a dev token for a designer) |

@@ -53,6 +53,44 @@ export function createProjectsRepository(db) {
       );
     },
 
+    /** A copy of another project; it starts at draft revision 0 like any new project. */
+    async insertDuplicate(project) {
+      await db.execute(
+        `INSERT INTO design_projects
+           (id, owner_user_id, title, description, machine_profile_id,
+            draft_document_json, draft_schema_version, draft_revision,
+            duplicated_from_project_id, duplicate_idempotency_key, duplicate_request_sha256)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        [
+          project.id,
+          project.ownerUserId,
+          project.title,
+          project.description ?? null,
+          project.machineProfileId ?? null,
+          JSON.stringify(project.draft),
+          project.draft.schemaVersion,
+          project.duplicatedFromProjectId,
+          project.idempotencyKey ?? null,
+          project.requestSha256 ?? null,
+        ],
+      );
+    },
+
+    /**
+     * The caller's copy made with this Idempotency-Key, or null (keys are per user). Deleted
+     * copies count too: the unique key still holds the key.
+     */
+    async findByDuplicateKey(ownerUserId, key) {
+      const [rows] = await db.execute(
+        `SELECT ${COLUMNS}, p.duplicate_request_sha256
+           FROM design_projects p
+          WHERE p.owner_user_id = ? AND p.duplicate_idempotency_key = ?`,
+        [ownerUserId, key],
+      );
+      if (!rows[0]) return null;
+      return { ...toProject(rows[0]), requestSha256: rows[0].duplicate_request_sha256 };
+    },
+
     /** @param {{ withDraft?: boolean, forUpdate?: boolean }} options */
     async findById(id, { withDraft = false, forUpdate = false } = {}) {
       const [rows] = await db.execute(

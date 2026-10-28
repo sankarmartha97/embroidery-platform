@@ -76,11 +76,11 @@ jobs:
           echo 'DEV_ROLE_ASSIGNMENTS={"0190f0a0-0000-7000-8000-00000000de11":["designer"]}' >> .env
           npm run db:migrate
           mysql -h 127.0.0.1 -P 3307 -uemb -pemb embroidery \
-            -e "INSERT IGNORE INTO users (id) VALUES ('0190f0a0-0000-7000-8000-00000000de11')"
+            -e "INSERT IGNORE INTO users (id) VALUES ('0190f0a0-0000-7000-8000-00000000de11'), ('0190f0a0-0000-7000-8000-00000000de12')"
           nohup node --env-file=.env src/server.js > api.log 2>&1 &
           nohup node --env-file=.env workers/main.js > worker.log 2>&1 &
-          (cd web && API_ORIGIN=http://127.0.0.1:3000 NEXT_TELEMETRY_DISABLED=1 nohup npx next dev -p 3001 > ../web.log 2>&1 &)
-          for i in $(seq 1 60); do curl -sf localhost:3000/ready && curl -sf -o /dev/null localhost:3001/sign-in && break; sleep 2; done
+          (cd web && API_ORIGIN=http://127.0.0.1:3000 NEXT_TELEMETRY_DISABLED=1 nohup npx next dev -p 5001 > ../web.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf localhost:3000/ready && curl -sf -o /dev/null localhost:5001/sign-in && break; sleep 2; done
       - name: E2E - Playwright
         working-directory: web
         run: |
