@@ -86,8 +86,10 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           MODERATOR_ID=0190f0a0-0000-7000-8000-00000000de13
+          FRIEND_ID=0190f0a0-0000-7000-8000-00000000de12
           E2E_TOKEN=$(cd .. && npm run -s dev:token) \
           E2E_MODERATOR_TOKEN=$(cd .. && npm run -s dev:token -- "$MODERATOR_ID") \
+          E2E_FRIEND_TOKEN=$(cd .. && npm run -s dev:token -- "$FRIEND_ID") \
             npm run e2e
       - name: E2E - logs on failure
         if: failure()

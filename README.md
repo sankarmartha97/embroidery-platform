@@ -174,6 +174,14 @@ Not done in S8: S8-02 SVG import and S8-03 upload pipeline with S8-06 scanner (p
 
 The new endpoints and the `PASSING_EXPORT_REQUIRED` error code went into the docs contract first, marked as proposed. Not done in S9: S9-04 prod environment IaC and S9-05 backup drill (cloud); the 10-minute moderator claim lock, SLA views and screening hits from FS-11.1; new versions of live designs (FS-6.4); evidence uploads for rights (need S8-03). The creator terms version is a placeholder until legal publishes the terms.
 
+## Sprint S10: what's done
+
+| Task                                             | Status         | Evidence                                                                                                                                                                                                                   |
+| ------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S10-03 Role-based UI, accessibility pass, polish | Done (checked) | `web/e2e/accessibility.spec.js`: axe WCAG 2.1 A/AA on sign-in, projects, Studio, its four dialogs and moderation, in light and dark: no violations. `web/e2e/roles.spec.js`: viewers and moderators get a read-only Studio |
+
+Not done in S10, and not buildable here: S10-01 marketplace entitlements (replaces the stub; needs OQ-04 and the marketplace API), S10-02/S10-05 fix buffers, S10-04 runbook dry-runs and alarm tuning (cloud), S10-06/S10-07 the Gate 3 security review and decision (people). Automated checks do not replace a manual screen-reader and keyboard review before Gate 3.
+
 ## Studio web app (first cut)
 
 | Task                                                               | Status                      | Evidence                                                                                                                                |
