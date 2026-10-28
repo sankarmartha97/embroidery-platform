@@ -11,9 +11,11 @@ import { pollJob } from '@/lib/jobs.js';
 import Canvas from './Canvas.js';
 import ConflictModal from './ConflictModal.js';
 import ExportDialog from './ExportDialog.js';
+import HistoryDialog from './HistoryDialog.js';
 import Inspector from './Inspector.js';
 import JobChip from './JobChip.js';
 import SequencePanel from './SequencePanel.js';
+import ShareDialog from './ShareDialog.js';
 
 const TOOLS = [
   { id: 'select', label: 'Select (V)', key: 'v', glyph: '↖', ready: true },
@@ -42,6 +44,7 @@ export default function Studio({ initialProject, formats, profiles }) {
   const [inspectorTab, setInspectorTab] = useState('properties');
   const [notice, setNotice] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [dialog, setDialog] = useState(null); // 'history' | 'share' | null
   const [focus, setFocus] = useState(null);
   const autosave = useRef(null);
   const document = history.present;
@@ -157,6 +160,41 @@ export default function Studio({ initialProject, formats, profiles }) {
       });
       setNotice('Your version was saved. The other change is in the version history.');
     }
+  }
+
+  const closeDialog = useCallback(() => setDialog(null), []);
+
+  // ---- Version history ----
+  /** Saves pending edits; throws if the draft cannot be saved (conflict, offline, invalid). */
+  async function saveNow() {
+    await autosave.current.flush();
+    const state = autosave.current.getState();
+    if (state.status !== STATUS.SAVED) {
+      throw new Error(`Save the design first (${STATUS_LABEL[state.status]}).`);
+    }
+    return state.revision;
+  }
+
+  async function saveVersion(label) {
+    await saveNow();
+    await apiFetch(`/design-projects/${projectId}/versions`, {
+      method: 'POST',
+      body: label ? { label } : {},
+    });
+  }
+
+  /** Restore makes a new head; the server keeps the current draft as a checkpoint version. */
+  async function restoreVersion(version) {
+    const revision = await saveNow();
+    await apiFetch(`/design-projects/${projectId}/versions/${version.id}/restore`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${revision}"` },
+    });
+    await reloadTheirs();
+    setIssues(null);
+    setNotice(
+      `Restored version ${version.versionNumber}. Your previous draft is kept in the history.`,
+    );
   }
 
   // ---- Jobs: snapshot the draft, queue the job, poll it ----
@@ -311,6 +349,16 @@ export default function Studio({ initialProject, formats, profiles }) {
           )}
         </div>
         <div className="topbar-group">
+          <button className="btn" onClick={() => setDialog('history')}>
+            History
+          </button>
+          {project.permissions?.canManageCollaborators && (
+            <button className="btn" onClick={() => setDialog('share')}>
+              Share
+            </button>
+          )}
+        </div>
+        <div className="topbar-group">
           <button className="btn" onClick={() => runJob('digitize')} disabled={busy || !canEdit}>
             Digitize
           </button>
@@ -420,6 +468,17 @@ export default function Studio({ initialProject, formats, profiles }) {
           onClose={() => setExporting(false)}
         />
       )}
+
+      {dialog === 'history' && (
+        <HistoryDialog
+          projectId={projectId}
+          canEdit={canEdit}
+          onSave={saveVersion}
+          onRestore={restoreVersion}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === 'share' && <ShareDialog projectId={projectId} onClose={closeDialog} />}
 
       {save.status === STATUS.CONFLICT && (
         <ConflictModal onReload={reloadTheirs} onSaveMine={saveMineAsVersion} />

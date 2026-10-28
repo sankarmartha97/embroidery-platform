@@ -326,6 +326,52 @@ export function createProjectsService({ db }) {
       return { project: toResponse(await repo.findById(copy.id)), created: true };
     },
 
+    /**
+     * Restores a version as the draft: a new head (FS-7.9). The current draft is snapshotted
+     * first (reason 'checkpoint', deduplicated against the latest version), so nothing is lost.
+     */
+    async restoreVersion(actor, id, versionId, ifMatch) {
+      const expected = parseIfMatch(ifMatch);
+      return transaction(db, async (conn) => {
+        const projects = createProjectsRepository(conn);
+        const versions = createVersionsRepository(conn);
+        const { project, collaborator } = await loadReadableWith(projects, actor, id, {
+          withDraft: true,
+          forUpdate: true,
+        });
+        if (!canEditDraft(actor, project, collaborator)) throw errors.forbidden();
+        assertEditableState(project);
+
+        const version = UUID.test(versionId) && (await versions.findWithDocument(versionId));
+        if (!version || version.projectId !== id) throw errors.notFound();
+        if (project.draftRevision !== expected) throw errors.draftConflict(project.draftRevision);
+
+        if (project.draft && validateDocument(project.draft).length === 0) {
+          const { json, sha256, document } = canonicalize(project.draft);
+          const latest = await versions.latest(id);
+          if (!latest || latest.documentSha256 !== sha256) {
+            const checkpoint = {
+              id: newId(),
+              projectId: id,
+              versionNumber: (latest?.versionNumber ?? 0) + 1,
+              documentSchemaVersion: document.schemaVersion,
+              documentSha256: sha256,
+              documentJson: json,
+              label: `Before restoring version ${version.versionNumber}`,
+              reason: 'checkpoint',
+              createdBy: actor.userId,
+              createdAt: new Date(),
+            };
+            await versions.insert(checkpoint);
+            await projects.setCurrentVersion(id, checkpoint.id);
+          }
+        }
+        // The row is locked and the revision checked, so this write cannot be stale.
+        await projects.saveDraft(id, expected, version.document);
+        return { draftRevision: expected + 1 };
+      });
+    },
+
     async listVersions(actor, id, query) {
       const limit = parseLimit(query.limit);
       const after = decodeCursor(query.cursor, (k) => Number.isInteger(k?.n) && k.n > 0);

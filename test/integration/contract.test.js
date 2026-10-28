@@ -13,6 +13,7 @@ import { heartDocument } from '../helpers/documents.js';
 import { createAuthKit } from '../helpers/jwt.js';
 
 const USER = '0190f0a0-0000-7000-8000-0000000008a1';
+const FRIEND = '0190f0a0-0000-7000-8000-0000000008b1';
 const NOT_IMPLEMENTED = new Set([
   'POST /design-projects/{id}/rights',
   'POST /design-projects/{id}/submit',
@@ -39,7 +40,8 @@ describe('API contract', () => {
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    const json = await res.json();
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : null;
     assert.equal(res.status, status, `${method} ${route}: ${JSON.stringify(json).slice(0, 200)}`);
     assert.deepEqual(
       contractErrors(method, route, status, json),
@@ -53,7 +55,7 @@ describe('API contract', () => {
   before(async () => {
     await resetDatabase();
     pool = createTestPool();
-    await insertUsers(pool, USER);
+    await insertUsers(pool, USER, FRIEND);
     auth = await createAuthKit();
     s3 = createS3Client();
     store = createArtifactStore({ client: s3, bucket: process.env.S3_BUCKET_ARTIFACTS });
@@ -127,6 +129,32 @@ describe('API contract', () => {
       'GET',
       `/design-projects/${id}/versions`,
       200,
+    );
+
+    await expectContract(
+      '/design-projects/{id}/versions/{versionId}/restore',
+      'POST',
+      `/design-projects/${id}/versions/${version.id}/restore`,
+      200,
+      { headers: { 'If-Match': '"1"' } },
+    );
+    const collaborators = `/design-projects/${id}/collaborators`;
+    await expectContract('/design-projects/{id}/collaborators', 'POST', collaborators, 201, {
+      body: { userId: FRIEND, role: 'viewer' },
+    });
+    await expectContract('/design-projects/{id}/collaborators', 'GET', collaborators, 200);
+    await expectContract(
+      '/design-projects/{id}/collaborators/{userId}',
+      'PATCH',
+      `${collaborators}/${FRIEND}`,
+      200,
+      { body: { role: 'editor', canExport: true } },
+    );
+    await expectContract(
+      '/design-projects/{id}/collaborators/{userId}',
+      'DELETE',
+      `${collaborators}/${FRIEND}`,
+      204,
     );
 
     await expectContract(

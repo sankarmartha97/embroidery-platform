@@ -16,6 +16,8 @@ tags:
     description: Design projects, drafts and duplication
   - name: Versions
     description: Immutable project versions
+  - name: Collaborators
+    description: Sharing a project with other users (owner only)
   - name: Jobs
     description: Digitize, simulate, validate and export jobs
   - name: Artifacts
@@ -152,6 +154,96 @@ paths:
                 properties:
                   data: { type: array, items: { $ref: '#/components/schemas/ProjectVersion' } }
                   page: { $ref: '#/components/schemas/PageInfo' }
+
+  /design-projects/{id}/versions/{versionId}/restore:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { name: versionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Versions]
+      summary: Restore a version as the draft (a new head; the current draft is snapshotted first)
+      description: |
+        Same rights as editing the draft. The current draft is snapshotted (reason 'checkpoint',
+        deduplicated by SHA-256) so nothing is lost, then the version's document becomes the draft.
+        Optimistic concurrency like autosave.
+      operationId: restoreVersion
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: Current draftRevision as a quoted string, e.g. "17"
+          schema: { type: string }
+      responses:
+        '200':
+          description: Restored
+          headers: { ETag: { schema: { type: string } } }
+          content: { application/json: { schema: { type: object, required: [draftRevision], properties: { draftRevision: { type: integer } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/collaborators:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [Collaborators]
+      summary: Active collaborators (owner only)
+      operationId: listCollaborators
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Collaborator' } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Collaborators]
+      summary: Invite a user, or re-invite a revoked one (owner only)
+      description: |
+        Invites by user id until the marketplace user directory is available (OQ-03); FS-7.10
+        invites by email. Inviting an active collaborator again is 409.
+      operationId: addCollaborator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CollaboratorCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Collaborator' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /design-projects/{id}/collaborators/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [Collaborators]
+      summary: Change role or export permission (owner only)
+      operationId: updateCollaborator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CollaboratorUpdate' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Collaborator' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Collaborators]
+      summary: Revoke access (owner only); takes effect on the next request (SEC-T05)
+      operationId: revokeCollaborator
+      responses:
+        '204': { description: Revoked }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   /design-projects/{id}/duplicate:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
@@ -574,6 +666,31 @@ components:
             height: { type: number, exclusiveMinimum: 0 }
         machineProfile: { type: object }
         objects: { type: array, maxItems: 5000, items: { type: object } }
+
+    Collaborator:
+      type: object
+      required: [userId, role, canExport, invitedBy, createdAt]
+      properties:
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [editor, viewer] }
+        canExport: { type: boolean }
+        invitedBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    CollaboratorCreate:
+      type: object
+      required: [userId, role]
+      properties:
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [editor, viewer] }
+        canExport: { type: boolean, default: false }
+
+    CollaboratorUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        role: { type: string, enum: [editor, viewer] }
+        canExport: { type: boolean }
 
     ProjectVersion:
       type: object

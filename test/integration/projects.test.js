@@ -398,6 +398,78 @@ describe('projects API', () => {
     });
   });
 
+  describe('restore (S8-01)', () => {
+    const restore = (user, id, versionId, revision) =>
+      call(user, 'POST', `/design-projects/${id}/versions/${versionId}/restore`, {
+        headers: { 'If-Match': `"${revision}"` },
+      });
+
+    it('makes the version the draft and snapshots the current draft first', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+      const changed = heartDocument({ canvas: { width: 90, height: 90 } });
+      await saveDraft(DESIGNER, project.id, 1, changed);
+
+      const res = await restore(DESIGNER, project.id, v1.body.id, 2);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.draftRevision, 3);
+      assert.equal(res.headers.get('etag'), '"3"');
+
+      const detail = await call(DESIGNER, 'GET', `/design-projects/${project.id}`);
+      assert.equal(detail.body.draft.canvas.width, heartDocument().canvas.width);
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${project.id}/versions`);
+      const [checkpoint] = versions.body.data;
+      assert.equal(checkpoint.versionNumber, 2);
+      assert.equal(checkpoint.reason, 'checkpoint');
+      assert.equal(checkpoint.label, 'Before restoring version 1');
+      assert.equal(detail.body.currentVersionId, checkpoint.id);
+
+      // The changed draft is kept in the checkpoint: restoring it brings it back.
+      const back = await restore(DESIGNER, project.id, checkpoint.id, 3);
+      assert.equal(back.status, 200);
+      const again = await call(DESIGNER, 'GET', `/design-projects/${project.id}`);
+      assert.equal(again.body.draft.canvas.width, 90);
+    });
+
+    it('does not snapshot a draft that equals the latest version', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+      assert.equal((await restore(DESIGNER, project.id, v1.body.id, 1)).status, 200);
+      const versions = await call(DESIGNER, 'GET', `/design-projects/${project.id}/versions`);
+      assert.equal(versions.body.data.length, 1);
+    });
+
+    it('checks If-Match, the version, and edit rights', async () => {
+      const project = await createProject();
+      await saveDraft(DESIGNER, project.id, 0, heartDocument());
+      const v1 = await call(DESIGNER, 'POST', `/design-projects/${project.id}/versions`);
+
+      const stale = await restore(DESIGNER, project.id, v1.body.id, 0);
+      assert.equal(stale.status, 409);
+      assert.equal(stale.body.error.code, 'DRAFT_CONFLICT');
+      const noHeader = await call(
+        DESIGNER,
+        'POST',
+        `/design-projects/${project.id}/versions/${v1.body.id}/restore`,
+      );
+      assert.equal(noHeader.status, 400);
+
+      const other = await createProject();
+      await saveDraft(DESIGNER, other.id, 0, heartDocument());
+      const foreign = await call(DESIGNER, 'POST', `/design-projects/${other.id}/versions`);
+      assert.equal((await restore(DESIGNER, project.id, foreign.body.id, 1)).status, 404);
+      assert.equal((await restore(DESIGNER, project.id, 'not-a-uuid', 1)).status, 404);
+
+      await addCollaborator(project.id, VIEWER, 'viewer');
+      assert.equal((await restore(VIEWER, project.id, v1.body.id, 1)).status, 403);
+      await addCollaborator(project.id, EDITOR, 'editor');
+      assert.equal((await restore(EDITOR, project.id, v1.body.id, 1)).status, 200);
+      assert.equal((await restore(STRANGER, project.id, v1.body.id, 2)).status, 404);
+    });
+  });
+
   describe('duplicate (S7-05)', () => {
     const duplicate = (user, id, { body, key } = {}) =>
       call(user, 'POST', `/design-projects/${id}/duplicate`, {

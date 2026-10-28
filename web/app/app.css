@@ -86,6 +86,40 @@ code {
 .project-card:hover {
   box-shadow: var(--shadow-md);
 }
+.project-card .project-title {
+  color: inherit;
+  text-decoration: none;
+}
+.project-card .project-title::after {
+  /* The whole card opens the project; the actions sit above this link. */
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.project-card {
+  position: relative;
+}
+.project-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scope-tabs {
+  margin: 24px 0 16px;
+}
+.scope-tabs .tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  text-decoration: none;
+}
+.scope-tabs .tab[aria-current='page'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
 .project-title {
   font-weight: 600;
   font-size: 16px;
@@ -661,4 +695,66 @@ code {
 }
 .grab:active {
   cursor: grabbing;
+}
+
+/* ---- Version history and sharing ---- */
+.modal.history-dialog,
+.modal.share-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+.history-save,
+.share-invite {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 12px 0;
+}
+.history-save .input,
+.share-invite .grow {
+  flex: 1;
+}
+.share-invite .check {
+  height: 32px;
+}
+.version-list,
+.share-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+.version-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.version-head {
+  display: flex;
+  gap: 8px;
+}
+.version-actions {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.share-user {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-row .select {
+  width: auto;
 }

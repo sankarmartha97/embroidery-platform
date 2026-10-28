@@ -2,7 +2,7 @@
 
 API, workers, QA tools and the Studio web app (`web/`) for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** sprint S6, part of S7 (duplicate API, export dialog) and the first Studio web app (`web/`, see its [README](web/README.md)). The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions, duplicate) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Publications and rights come later.
+**Status:** sprint S6, parts of S7 (duplicate API, export dialog) and S8 (projects UI, version history, sharing) and the first Studio web app (`web/`, see its [README](web/README.md)). The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions, restore, duplicate, collaborators) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Publications and rights come later.
 
 ## Quick start
 
@@ -151,6 +151,17 @@ Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-0
 Schema change: migration `202702010900__project_duplicate_idempotency.sql` stores the duplicate request's `Idempotency-Key` and fingerprint on the copy, so a retry returns the same copy and a reused key with a different body is 409. It was added to the docs repository first and copied here.
 
 Not done in S7: S7-02 simulator selection and "out of date" (needs the simulator, S6-08), S7-03 worker load test and S7-07 k6 load (need a sized environment), S7-04/S7-06 bug-fix buffers, S7-08/S7-09/S7-10 Gate 2 report, physical stitch-outs and review (people and machines). Export options from FS-8.6 (trims as jumps or commands, max stitch length override, file name) wait for the real engine.
+
+## Sprint S8: what's done
+
+| Task                                                              | Status | Evidence                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S8-01 Projects list, version history, restore-as-draft, duplicate | Done   | `POST /design-projects/{id}/versions/{versionId}/restore` (current draft kept as a checkpoint first). Projects page: All / Mine / Shared with me, Duplicate per card. Studio History: save a named version, restore, duplicate a version |
+| S8-04 Collaborators API (invite, role, can_export, revoke)        | Done   | `GET`/`POST /design-projects/{id}/collaborators`, `PATCH`/`DELETE …/{userId}`, owner only. Revoke ends access on the next request (SEC-T05 through the API). Studio Share dialog. 5 integration tests, IDOR matrix and contract tests    |
+
+The new endpoints went into the docs contract first and are marked there as proposed, for architect review. Invites take a user id until the marketplace user directory exists (OQ-03); FS-7.10 invites by email.
+
+Not done in S8: S8-02 SVG import and S8-03 upload pipeline with S8-06 scanner (presigned upload, quarantine, sanitiser, virus scan: need the upload infrastructure decided), S8-05 staging environment and CD (cloud), S8-07 security tests for uploads (follow S8-03).
 
 ## Studio web app (first cut)
 
