@@ -11,6 +11,7 @@ Start the API and worker first (see the [root README](../README.md)), with your 
 DEV_ROLE_ASSIGNMENTS='{"0190f0a0-0000-7000-8000-00000000de11":["designer"]}' npm run dev
 npm run dev:worker
 npm run -s dev:token            # copy the token
+# a moderator: add "<id>":["staff.moderator"] to DEV_ROLE_ASSIGNMENTS and run dev:token -- <id>
 
 # here
 npm ci
@@ -37,6 +38,10 @@ Open http://localhost:5001 and paste the token on the sign-in page.
 | History      | `HistoryDialog.js`                              | Save a named version; restore any version as the draft (the server keeps the current draft as a checkpoint); duplicate a version into a new project                                                                                                                                                                                               |
 | Sharing      | `ShareDialog.js`                                | Owner only: add a collaborator by user id (email waits for OQ-03), change role and export, remove access                                                                                                                                                                                                                                          |
 | Projects     | `app/projects`                                  | All / Mine / Shared with me tabs; Duplicate on each card                                                                                                                                                                                                                                                                                          |
+| Submit       | `SubmitDialog.js`, `lib/publishing.js`          | Owner: version, rights declaration, checklist (rights, export, validation, terms), submit; status chip shows the moderator's decision                                                                                                                                                                                                             |
+| Moderation   | `app/moderation`                                | `staff.moderator`: queue by status, approve, request changes, reject with an FS-11.1 reason code                                                                                                                                                                                                                                                  |
+| Transform    | `lib/transform.js`, `Canvas.js`                 | Drag an object to move it (0.1 mm snap); 8 scale handles (Shift: proportions, Alt: from the centre); rotate knob (Shift: 15° steps). Stays inside the canvas; one undo step per drag                                                                                                                                                              |
+| Simulator    | `Simulator.js`, `lib/simulator.js`              | Simulate reuses the version's stitch data or digitizes first; Canvas 2D playback, step by stitch/object/colour, log speed, colour scrubber, jumps and trims, click a stitch to select its object, out-of-date banner after edits                                                                                                                  |
 
 ## Scripts
 
@@ -50,4 +55,4 @@ Open http://localhost:5001 and paste the token on the sign-in page.
 
 ## Not built yet
 
-Text, SVG import, adding or removing nodes on an existing path, transform handles with drag, the simulator (S6-08), the "out of date" marker after edits, and marketplace sign-in (A5).
+Text, SVG import, adding or removing nodes on an existing path, marquee selection, and marketplace sign-in (A5).

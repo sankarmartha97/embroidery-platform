@@ -2,7 +2,7 @@
 
 API, workers, QA tools and the Studio web app (`web/`) for the Embroidery Design Library & Digitizing Platform. The specification lives in the sibling repository [`embroidery-platform-docs`](../embroidery-platform-docs/README.md); this code follows its [developer guide](../embroidery-platform-docs/10-developer-guide/README.md).
 
-**Status:** sprint S6, parts of S7 (duplicate API, export dialog) and S8 (projects UI, version history, sharing) and the first Studio web app (`web/`, see its [README](web/README.md)). The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions, restore, duplicate, collaborators) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Publications and rights come later.
+**Status:** sprint S6, parts of S7 (duplicate API, export dialog) S8 (projects UI, version history, sharing) and S9 (rights, submission, moderation) and the first Studio web app (`web/`, see its [README](web/README.md)). The API serves health, reference data, "My Machine", projects (create, list, read, update, draft autosave with `If-Match`, immutable versions, restore, duplicate, collaborators) jobs (create with `Idempotency-Key`, get, cancel, `digitizeIfMissing` chaining) and artifacts (list, signed download URLs with an audit row per decision, stitch data for the simulator). The worker runs digitize, validate and export jobs with a deterministic test engine and stores verified artifacts in S3; a scheduled reconciler recovers jobs whose worker died. Validate jobs check stitch data against the machine profile with engine-neutral rules, and job creation and download URLs have their own rate limits. Rights declarations, submission and moderation work end to end; takedowns and the real marketplace listing come later.
 
 ## Quick start
 
@@ -139,7 +139,7 @@ Also: `GET /design-projects/{id}/artifacts` (list with `versionId` / `type` filt
 
 Found by the contract tests: `/me/machines` returned `"nickname": null`, which the contract does not allow; it is now omitted when unset.
 
-Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-08/S6-09 simulator and job chips and S6-11 E2E (web app), S6-10/S6-12 golden corpus on the real engine (Gate 1).
+S6-08 simulator is done in the Studio: Canvas 2D playback of the stitch data (play, step stitch/object/colour, 1–1000 stitches/s log speed, colour-segmented scrubber, dashed jumps, trim marks, counters, Space , . [ ] keys), `web/lib/simulator.js` with unit tests and `web/e2e/simulator.spec.js`. It draws on the main thread (no Web Worker yet) and has not been measured at 50k stitches. Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-10/S6-12 golden corpus on the real engine (Gate 1).
 
 ## Sprint S7: what's done
 
@@ -150,7 +150,7 @@ Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-0
 
 Schema change: migration `202702010900__project_duplicate_idempotency.sql` stores the duplicate request's `Idempotency-Key` and fingerprint on the copy, so a retry returns the same copy and a reused key with a different body is 409. It was added to the docs repository first and copied here.
 
-Not done in S7: S7-02 simulator selection and "out of date" (needs the simulator, S6-08), S7-03 worker load test and S7-07 k6 load (need a sized environment), S7-04/S7-06 bug-fix buffers, S7-08/S7-09/S7-10 Gate 2 report, physical stitch-outs and review (people and machines). Export options from FS-8.6 (trims as jumps or commands, max stitch length override, file name) wait for the real engine.
+S7-02 is done with the simulator: clicking a sewn stitch selects its object, and an edit marks the simulation out of date. Not done in S7: S7-03 worker load test and S7-07 k6 load (need a sized environment), S7-04/S7-06 bug-fix buffers, S7-08/S7-09/S7-10 Gate 2 report, physical stitch-outs and review (people and machines). Export options from FS-8.6 (trims as jumps or commands, max stitch length override, file name) wait for the real engine.
 
 ## Sprint S8: what's done
 
@@ -162,6 +162,25 @@ Not done in S7: S7-02 simulator selection and "out of date" (needs the simulator
 The new endpoints went into the docs contract first and are marked there as proposed, for architect review. Invites take a user id until the marketplace user directory exists (OQ-03); FS-7.10 invites by email.
 
 Not done in S8: S8-02 SVG import and S8-03 upload pipeline with S8-06 scanner (presigned upload, quarantine, sanitiser, virus scan: need the upload infrastructure decided), S8-05 staging environment and CD (cloud), S8-07 security tests for uploads (follow S8-03).
+
+## Sprint S9: what's done
+
+| Task                                                               | Status | Evidence                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S9-01 Rights declarations, submission, moderation, publication API | Done   | New modules `rights` and `publications`. Submit needs design rights (not rejected), rights for every asset, and a machine file whose stitch data validated passed or warning (FR-17). Approval publishes the exact version and sets visibility `marketplace` (FR-18) |
+| S9-02 Submit flow with rights form                                 | Done   | Studio Submit dialog: version, rights declaration, checklist, creator terms (recorded with a hashed IP). Status chip with the moderator's reason                                                                                                                     |
+| S9-03 Moderation queue UI                                          | Done   | `/moderation` for `staff.moderator`: Waiting / Changes requested / Approved / Rejected, rights and validation per item, approve, request changes (reason), reject (FS-11.1 code + note)                                                                              |
+| S9-06 E2E publish flow; role escalation (SEC-T11)                  | Done   | `web/e2e/publishing.spec.js`: export → rights → submit → request changes → resubmit → approve. SEC-T11 in `test/integration/publications.test.js`: designers get 403 on review and rights verification                                                               |
+
+The new endpoints and the `PASSING_EXPORT_REQUIRED` error code went into the docs contract first, marked as proposed. Not done in S9: S9-04 prod environment IaC and S9-05 backup drill (cloud); the 10-minute moderator claim lock, SLA views and screening hits from FS-11.1; new versions of live designs (FS-6.4); evidence uploads for rights (need S8-03). The creator terms version is a placeholder until legal publishes the terms.
+
+## Sprint S10: what's done
+
+| Task                                             | Status         | Evidence                                                                                                                                                                                                                   |
+| ------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S10-03 Role-based UI, accessibility pass, polish | Done (checked) | `web/e2e/accessibility.spec.js`: axe WCAG 2.1 A/AA on sign-in, projects, Studio, its four dialogs and moderation, in light and dark: no violations. `web/e2e/roles.spec.js`: viewers and moderators get a read-only Studio |
+
+Not done in S10, and not buildable here: S10-01 marketplace entitlements (replaces the stub; needs OQ-04 and the marketplace API), S10-02/S10-05 fix buffers, S10-04 runbook dry-runs and alarm tuning (cloud), S10-06/S10-07 the Gate 3 security review and decision (people). Automated checks do not replace a manual screen-reader and keyboard review before Gate 3.
 
 ## Studio web app (first cut)
 
@@ -176,7 +195,7 @@ Not done in S8: S8-02 SVG import and S8-03 upload pipeline with S8-06 scanner (p
 | S3-06 Pen / Bézier tool                                            | Done                        | Open and closed paths, corner and smooth nodes, node editing (e2e drags a corner and checks the saved path)                             |
 | S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                                          |
 
-Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). Partly done: S2-16 (selection, arrow-key nudge and numeric position; no drag handles yet). Not started: text, SVG import, the simulator (S6-08).
+Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). S2-16 is done: selection, arrow-key nudge, numeric position, and transform handles (drag to move, 8 scale handles with Shift for proportions and Alt from the centre, a rotate knob with Shift snapping to 15°; `web/lib/transform.js`, unit and e2e tests). No marquee selection yet. S6-08 simulator: done (see below). Not started: text, SVG import.
 
 ## Known limits
 

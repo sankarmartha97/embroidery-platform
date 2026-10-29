@@ -24,9 +24,10 @@ const SCOPES = [
 export default async function ProjectsPage({ searchParams }) {
   const requested = (await searchParams).scope;
   const scope = SCOPES.some((s) => s.id === requested) ? requested : 'all';
-  const [projects, profiles] = await Promise.all([
+  const [projects, profiles, queue] = await Promise.all([
     serverApi(`/design-projects?limit=100&scope=${scope}`),
     serverApi('/machine-profiles'),
+    serverApi('/design-publications?limit=1'), // 200 only for moderators
   ]);
   if (projects.status === 401) redirect('/sign-in?next=/projects');
   if (projects.status !== 200) {
@@ -43,6 +44,11 @@ export default async function ProjectsPage({ searchParams }) {
     <main className="page">
       <header className="page-header">
         <h1>Projects</h1>
+        {queue.status === 200 && (
+          <Link href="/moderation" className="btn">
+            Moderation
+          </Link>
+        )}
         <form action="/auth/sign-out" method="post">
           <button className="btn">Sign out</button>
         </form>

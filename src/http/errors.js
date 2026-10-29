@@ -42,6 +42,20 @@ export const errors = {
       409,
       'This Idempotency-Key was already used with a different request.',
     ),
+  rightsDeclarationRequired: (details) =>
+    new AppError(
+      'RIGHTS_DECLARATION_REQUIRED',
+      422,
+      'Declare the rights for the design and every imported asset before submitting.',
+      details,
+    ),
+  passingExportRequired: () =>
+    new AppError(
+      'PASSING_EXPORT_REQUIRED',
+      422,
+      'Export this version first. Its stitch data must pass validation (warnings are allowed).',
+      [{ path: '/versionId', issue: 'has no machine file with passing validation' }],
+    ),
   validation: (details, message = 'Request validation failed.') =>
     new AppError('VALIDATION_FAILED', 422, message, details),
   unsupportedFormat: (format, path = '/preferredFormat') =>

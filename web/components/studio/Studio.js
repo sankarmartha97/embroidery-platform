@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, newIdempotencyKey } from '@/lib/api.js';
 import { createAutosave, STATUS, STATUS_LABEL } from '@/lib/autosave.js';
-import { hoopOf, nudge } from '@/lib/document.js';
+import { hoopOf, nudge, setTransform } from '@/lib/document.js';
 import { addShape, setPath } from '@/lib/shapes.js';
 import { createHistory, record, redo, reset, undo } from '@/lib/history.js';
 import { pollJob } from '@/lib/jobs.js';
+import { PUBLICATION_LABEL } from '@/lib/publishing.js';
+import { buildPlayback } from '@/lib/simulator.js';
 import Canvas from './Canvas.js';
 import ConflictModal from './ConflictModal.js';
 import ExportDialog from './ExportDialog.js';
@@ -15,7 +17,9 @@ import HistoryDialog from './HistoryDialog.js';
 import Inspector from './Inspector.js';
 import JobChip from './JobChip.js';
 import SequencePanel from './SequencePanel.js';
+import Simulator from './Simulator.js';
 import ShareDialog from './ShareDialog.js';
+import SubmitDialog from './SubmitDialog.js';
 
 const TOOLS = [
   { id: 'select', label: 'Select (V)', key: 'v', glyph: '↖', ready: true },
@@ -44,7 +48,11 @@ export default function Studio({ initialProject, formats, profiles }) {
   const [inspectorTab, setInspectorTab] = useState('properties');
   const [notice, setNotice] = useState(null);
   const [exporting, setExporting] = useState(false);
-  const [dialog, setDialog] = useState(null); // 'history' | 'share' | null
+  const [dialog, setDialog] = useState(null); // 'history' | 'share' | 'submit' | null
+  const [publication, setPublication] = useState(null);
+  // Simulator mode: { playback, document } (the document it was made from, for "out of date").
+  const [sim, setSim] = useState(null);
+  const [simLoading, setSimLoading] = useState(false);
   const [focus, setFocus] = useState(null);
   const autosave = useRef(null);
   const document = history.present;
@@ -164,6 +172,20 @@ export default function Studio({ initialProject, formats, profiles }) {
 
   const closeDialog = useCallback(() => setDialog(null), []);
 
+  // Latest submission, for the status chip (FS-6.4).
+  useEffect(() => {
+    apiFetch(`/design-projects/${projectId}/publications`)
+      .then(({ data }) => setPublication(data.data[0] ?? null))
+      .catch(() => {});
+  }, [projectId]);
+
+  function submitted(next) {
+    setPublication(next);
+    setProject((p) => ({ ...p, status: 'in_review' }));
+    setDialog(null);
+    setNotice('Submitted for review. You will see the moderator’s decision here.');
+  }
+
   // ---- Version history ----
   /** Saves pending edits; throws if the draft cannot be saved (conflict, offline, invalid). */
   async function saveNow() {
@@ -272,6 +294,41 @@ export default function Studio({ initialProject, formats, profiles }) {
     }
   }
 
+  /**
+   * Simulate (S6-08): the stitch data of a fresh version of the saved draft. Reuses the version's
+   * stitch data when it exists; otherwise runs a digitize job first.
+   */
+  async function simulate() {
+    setSimLoading(true);
+    setNotice(null);
+    try {
+      await saveNow();
+      const source = document;
+      const { data: version } = await apiFetch(`/design-projects/${projectId}/versions`, {
+        method: 'POST',
+        body: {},
+      });
+      const stitchDataOf = async () =>
+        (
+          await apiFetch(
+            `/design-projects/${projectId}/artifacts?versionId=${version.id}&type=stitch_data`,
+          )
+        ).data.data[0];
+      let artifact = await stitchDataOf();
+      if (!artifact) {
+        const done = await startJob('digitize');
+        if (done.status !== 'succeeded') return;
+        artifact = await stitchDataOf();
+      }
+      const { data } = await apiFetch(`/artifacts/${artifact.id}/stitch-data`);
+      setSim({ playback: buildPlayback(data, source.canvas), document: source });
+    } catch (err) {
+      setNotice(err.message);
+    } finally {
+      setSimLoading(false);
+    }
+  }
+
   /** Issues panel: select the object and glide the camera to it. */
   function focusObject(id) {
     setSelectedId(id);
@@ -357,10 +414,34 @@ export default function Studio({ initialProject, formats, profiles }) {
               Share
             </button>
           )}
+          {publication && (
+            <span
+              className={`publication-chip publication-${publication.status}`}
+              role="status"
+              title={publication.decisionReason ?? undefined}
+              data-testid="publication-status"
+            >
+              {PUBLICATION_LABEL[publication.status] ?? publication.status}
+              {publication.decisionReason && ` · ${publication.decisionReason}`}
+            </span>
+          )}
+          {project.permissions?.canSubmit && project.status === 'draft' && (
+            <button className="btn" onClick={() => setDialog('submit')}>
+              Submit
+            </button>
+          )}
         </div>
         <div className="topbar-group">
           <button className="btn" onClick={() => runJob('digitize')} disabled={busy || !canEdit}>
             Digitize
+          </button>
+          <button
+            className="btn"
+            onClick={simulate}
+            disabled={busy || simLoading || !canEdit || document.objects.length === 0}
+            aria-pressed={Boolean(sim)}
+          >
+            {simLoading ? 'Simulating…' : 'Simulate'}
           </button>
           <button
             className="btn"
@@ -416,22 +497,35 @@ export default function Studio({ initialProject, formats, profiles }) {
       />
 
       <main className="canvas-area">
-        <Canvas
-          document={document}
-          hoop={profile ? { w: profile.hoopWidthMm, h: profile.hoopHeightMm } : hoopOf(document)}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onNudge={(id, dx, dy) => edit((d) => nudge(d, id, dx, dy))}
-          onZoom={setZoom}
-          tool={tool}
-          onToolChange={setTool}
-          onCreate={createShape}
-          editingId={editingId}
-          onStartEdit={startEditing}
-          onEndEdit={() => setEditingId(null)}
-          onEditPath={(id, d, closed) => edit((doc) => setPath(doc, id, d, closed))}
-          focus={focus}
-        />
+        {sim ? (
+          <Simulator
+            playback={sim.playback}
+            hoop={profile ? { w: profile.hoopWidthMm, h: profile.hoopHeightMm } : hoopOf(document)}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            outOfDate={sim.document !== document}
+            onRefresh={simulate}
+            onClose={() => setSim(null)}
+          />
+        ) : (
+          <Canvas
+            document={document}
+            hoop={profile ? { w: profile.hoopWidthMm, h: profile.hoopHeightMm } : hoopOf(document)}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onNudge={(id, dx, dy) => edit((d) => nudge(d, id, dx, dy))}
+            onZoom={setZoom}
+            tool={tool}
+            onToolChange={setTool}
+            onCreate={createShape}
+            editingId={editingId}
+            onStartEdit={startEditing}
+            onEndEdit={() => setEditingId(null)}
+            onEditPath={(id, d, closed) => edit((doc) => setPath(doc, id, d, closed))}
+            onTransform={canEdit ? (id, m) => edit((doc) => setTransform(doc, id, m)) : undefined}
+            focus={focus}
+          />
+        )}
       </main>
 
       <Inspector
@@ -479,6 +573,9 @@ export default function Studio({ initialProject, formats, profiles }) {
         />
       )}
       {dialog === 'share' && <ShareDialog projectId={projectId} onClose={closeDialog} />}
+      {dialog === 'submit' && (
+        <SubmitDialog projectId={projectId} onSubmitted={submitted} onClose={closeDialog} />
+      )}
 
       {save.status === STATUS.CONFLICT && (
         <ConflictModal onReload={reloadTheirs} onSaveMine={saveMineAsVersion} />
