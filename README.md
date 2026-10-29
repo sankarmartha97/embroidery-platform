@@ -139,7 +139,16 @@ Also: `GET /design-projects/{id}/artifacts` (list with `versionId` / `type` filt
 
 Found by the contract tests: `/me/machines` returned `"nickname": null`, which the contract does not allow; it is now omitted when unset.
 
-S6-08 simulator is done in the Studio: Canvas 2D playback of the stitch data (play, step stitch/object/colour, 1–1000 stitches/s log speed, colour-segmented scrubber, dashed jumps, trim marks, counters, Space , . [ ] keys), `web/lib/simulator.js` with unit tests and `web/e2e/simulator.spec.js`. It draws on the main thread (no Web Worker yet) and has not been measured at 50k stitches. Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-10/S6-12 golden corpus on the real engine (Gate 1).
+S6-08 simulator is done in the Studio: Canvas 2D playback of the stitch data (play, step stitch/object/colour, 1–1000 stitches/s log speed, colour-segmented scrubber, dashed jumps, trim marks, counters, Space , . [ ] keys), `web/lib/simulator.js` with unit tests and `web/e2e/simulator.spec.js`. It draws on the main thread (no Web Worker or checkpoint bitmaps yet). Measured with `npm run perf` in `web/` (a synthetic design in the real simulator, Chrome on the development Mac, CPU slowdown through DevTools):
+
+| Stitches | CPU | Playback fps (p95 frame) | Long tasks | Jump to end (full draw) | Toggle jumps (redraw) |
+| -------- | --- | ------------------------ | ---------- | ----------------------- | --------------------- |
+| 50,000   | 1×  | 60 (16.7 ms)             | 0          | 48 ms                   | 79 ms                 |
+| 50,000   | 4×  | 60 (16.7 ms)             | 0          | 144 ms                  | 193 ms                |
+| 100,000  | 1×  | 60 (16.7 ms)             | 0          | 67 ms                   | 130 ms                |
+| 100,000  | 4×  | 60 (16.7 ms)             | 0          | 265 ms                  | 315 ms                |
+
+So the S6-08 target (a 50k-stitch design plays smoothly) and FS-8.2's 60 fps at 100k are met; the 4× rows stand in for an older laptop and are not a measurement on a real 2020 MacBook Air. Full redraws are one-off pauses after a click; the test fails if any passes 500 ms. Stitches draw with bevel joins (round joins made the 100k × 4 full draw 382 ms). Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-10/S6-12 golden corpus on the real engine (Gate 1).
 
 ## Sprint S7: what's done
 

@@ -75,8 +75,8 @@ export default function Simulator({
       const { x, y, kind, colour } = playback;
       const sx = (i) => cam.x + x[i] * cam.scale;
       const sy = (i) => cam.y + y[i] * cam.scale;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.lineCap = 'butt';
+      ctx.lineJoin = 'bevel';
       // Batch runs of the same kind and colour into one path.
       let i = Math.max(1, from);
       while (i <= upTo) {
