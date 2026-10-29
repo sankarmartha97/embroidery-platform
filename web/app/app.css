@@ -412,13 +412,20 @@ code {
 .design-object:hover {
   filter: brightness(1.2);
 }
-.selection rect {
+.selection polygon,
+.selection line,
+.selection rect,
+.selection circle {
   fill: none;
   stroke: var(--selection);
   stroke-width: 1px;
 }
 .selection .handle {
   fill: var(--canvas-bg);
+  stroke-width: 1.5px;
+}
+.design-object {
+  cursor: move;
 }
 
 .inspector {
@@ -645,7 +652,7 @@ code {
   transition: width 200ms ease-out;
 }
 .design-object-hit {
-  cursor: pointer;
+  cursor: move;
 }
 
 /* ---- Drawing tools ---- */

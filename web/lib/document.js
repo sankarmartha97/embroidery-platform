@@ -130,6 +130,14 @@ export function moveInSequence(document, id, delta) {
   };
 }
 
+/** Replaces an object's transform (transform handles). Locked objects do not change. */
+export function setTransform(document, id, transform) {
+  return {
+    ...document,
+    objects: document.objects.map((o) => (o.id !== id || o.locked ? o : { ...o, transform })),
+  };
+}
+
 /** Nudges an object by (dx, dy) mm through its transform (arrow keys: 0.1 mm, Shift: 1 mm). */
 export function nudge(document, id, dx, dy) {
   return {

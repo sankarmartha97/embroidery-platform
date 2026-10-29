@@ -162,6 +162,58 @@ test.describe('Drawing tools', () => {
     await saved();
   });
 
+  test('moves, scales and rotates with the transform handles (S2-16)', async () => {
+    const circle = async () => (await savedObjects()).find((o) => o.name === 'Ellipse 1');
+    const centreOf = async (a, b) => {
+      const p = await page.locator(`[data-handle="${a}"]`).boundingBox();
+      const q = await page.locator(`[data-handle="${b}"]`).boundingBox();
+      return [
+        (p.x + p.width / 2 + q.x + q.width / 2) / 2,
+        (p.y + p.height / 2 + q.y + q.height / 2) / 2,
+      ];
+    };
+    const mmPerPx = 100 / (await page.locator('.hoop-field').boundingBox()).width;
+    const dragBy = async ([x, y], dxMm, dyMm, { shift = false } = {}) => {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      if (shift) await page.keyboard.down('Shift');
+      await page.mouse.move(x + dxMm / mmPerPx, y + dyMm / mmPerPx, { steps: 10 });
+      await page.mouse.up();
+      if (shift) await page.keyboard.up('Shift');
+    };
+
+    await page.getByRole('button', { name: /^Ellipse 1/ }).click();
+    await expect(page.locator('[data-handle]')).toHaveCount(9);
+    const before = (await circle()).transform ?? [1, 0, 0, 1, 0, 0];
+
+    // Move: drag the object itself 5 mm right.
+    await dragBy(await centreOf('nw', 'se'), 5, 0);
+    await saved();
+    const moved = (await circle()).transform;
+    near([moved[4] - before[4], moved[5] - before[5]], [5, 0], 0.3);
+
+    // Scale: the east handle 6 mm further right stretches x only.
+    await dragBy(await centreOf('e', 'e'), 6, 0);
+    await saved();
+    const scaled = (await circle()).transform;
+    expect(scaled[0]).toBeGreaterThan(1.1);
+    expect(scaled[3]).toBeCloseTo(1, 3);
+
+    // Rotate with Shift: the angle snaps to 15°.
+    await dragBy(await centreOf('rotate', 'rotate'), 12, 8, { shift: true });
+    await saved();
+    const [a, b] = (await circle()).transform;
+    const degrees = (Math.atan2(b, a) * 180) / Math.PI;
+    expect(Math.abs(degrees)).toBeGreaterThan(1);
+    expect(Math.abs(degrees / 15 - Math.round(degrees / 15))).toBeLessThan(0.01);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/handles.png` });
+
+    // Each drag is one undo step.
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Undo' }).click();
+    await saved();
+    expect((await circle()).transform ?? [1, 0, 0, 1, 0, 0]).toEqual(before);
+  });
+
   test('the drawn design validates against the machine', async () => {
     await page.getByRole('button', { name: /^Validate/ }).click();
     await expect(page.getByTestId('job-validate')).toContainText('Done', { timeout: 30_000 });

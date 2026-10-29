@@ -195,7 +195,7 @@ Not done in S10, and not buildable here: S10-01 marketplace entitlements (replac
 | S3-06 Pen / Bézier tool                                            | Done                        | Open and closed paths, corner and smooth nodes, node editing (e2e drags a corner and checks the saved path)                             |
 | S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                                          |
 
-Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). Partly done: S2-16 (selection, arrow-key nudge and numeric position; no drag handles yet). Not started: text, SVG import, the simulator (S6-08).
+Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). S2-16 is done: selection, arrow-key nudge, numeric position, and transform handles (drag to move, 8 scale handles with Shift for proportions and Alt from the centre, a rotate knob with Shift snapping to 15°; `web/lib/transform.js`, unit and e2e tests). No marquee selection yet. Not started: text, SVG import, the simulator (S6-08).
 
 ## Known limits
 

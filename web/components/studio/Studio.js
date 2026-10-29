@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, newIdempotencyKey } from '@/lib/api.js';
 import { createAutosave, STATUS, STATUS_LABEL } from '@/lib/autosave.js';
-import { hoopOf, nudge } from '@/lib/document.js';
+import { hoopOf, nudge, setTransform } from '@/lib/document.js';
 import { addShape, setPath } from '@/lib/shapes.js';
 import { createHistory, record, redo, reset, undo } from '@/lib/history.js';
 import { pollJob } from '@/lib/jobs.js';
@@ -463,6 +463,7 @@ export default function Studio({ initialProject, formats, profiles }) {
           onStartEdit={startEditing}
           onEndEdit={() => setEditingId(null)}
           onEditPath={(id, d, closed) => edit((doc) => setPath(doc, id, d, closed))}
+          onTransform={canEdit ? (id, m) => edit((doc) => setTransform(doc, id, m)) : undefined}
           focus={focus}
         />
       </main>
