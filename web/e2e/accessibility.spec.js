@@ -72,6 +72,11 @@ for (const scheme of ['light', 'dark']) {
         await expect(page.getByRole('dialog')).toBeHidden();
       }
 
+      await page.getByRole('button', { name: 'Simulate' }).click();
+      await expect(page.getByTestId('simulator')).toBeVisible({ timeout: 30_000 });
+      found.push(...(await audit(page, 'simulator')));
+      await page.getByRole('button', { name: 'Back to editing' }).click();
+
       if (MODERATOR_TOKEN) {
         await context.clearCookies();
         await context.addCookies([

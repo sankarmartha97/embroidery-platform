@@ -139,7 +139,7 @@ Also: `GET /design-projects/{id}/artifacts` (list with `versionId` / `type` filt
 
 Found by the contract tests: `/me/machines` returned `"nickname": null`, which the contract does not allow; it is now omitted when unset.
 
-Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-08/S6-09 simulator and job chips and S6-11 E2E (web app), S6-10/S6-12 golden corpus on the real engine (Gate 1).
+S6-08 simulator is done in the Studio: Canvas 2D playback of the stitch data (play, step stitch/object/colour, 1–1000 stitches/s log speed, colour-segmented scrubber, dashed jumps, trim marks, counters, Space , . [ ] keys), `web/lib/simulator.js` with unit tests and `web/e2e/simulator.spec.js`. It draws on the main thread (no Web Worker yet) and has not been measured at 50k stitches. Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-10/S6-12 golden corpus on the real engine (Gate 1).
 
 ## Sprint S7: what's done
 
@@ -150,7 +150,7 @@ Not done in S6: S6-02 observability in `dev` (needs the cloud environment), S6-0
 
 Schema change: migration `202702010900__project_duplicate_idempotency.sql` stores the duplicate request's `Idempotency-Key` and fingerprint on the copy, so a retry returns the same copy and a reused key with a different body is 409. It was added to the docs repository first and copied here.
 
-Not done in S7: S7-02 simulator selection and "out of date" (needs the simulator, S6-08), S7-03 worker load test and S7-07 k6 load (need a sized environment), S7-04/S7-06 bug-fix buffers, S7-08/S7-09/S7-10 Gate 2 report, physical stitch-outs and review (people and machines). Export options from FS-8.6 (trims as jumps or commands, max stitch length override, file name) wait for the real engine.
+S7-02 is done with the simulator: clicking a sewn stitch selects its object, and an edit marks the simulation out of date. Not done in S7: S7-03 worker load test and S7-07 k6 load (need a sized environment), S7-04/S7-06 bug-fix buffers, S7-08/S7-09/S7-10 Gate 2 report, physical stitch-outs and review (people and machines). Export options from FS-8.6 (trims as jumps or commands, max stitch length override, file name) wait for the real engine.
 
 ## Sprint S8: what's done
 
@@ -195,7 +195,7 @@ Not done in S10, and not buildable here: S10-01 marketplace entitlements (replac
 | S3-06 Pen / Bézier tool                                            | Done                        | Open and closed paths, corner and smooth nodes, node editing (e2e drags a corner and checks the saved path)                             |
 | S3-09 Playwright E2E skeleton                                      | Done                        | `web/e2e/studio.spec.js` runs in CI against the full stack and fails on browser console errors                                          |
 
-Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). S2-16 is done: selection, arrow-key nudge, numeric position, and transform handles (drag to move, 8 scale handles with Shift for proportions and Alt from the centre, a rotate knob with Shift snapping to 15°; `web/lib/transform.js`, unit and e2e tests). No marquee selection yet. Not started: text, SVG import, the simulator (S6-08).
+Also added for the Studio: `GET /artifacts/{id}/report` (the issues panel; in the docs contract first, covered by the IDOR matrix and contract tests). S2-16 is done: selection, arrow-key nudge, numeric position, and transform handles (drag to move, 8 scale handles with Shift for proportions and Alt from the centre, a rotate knob with Shift snapping to 15°; `web/lib/transform.js`, unit and e2e tests). No marquee selection yet. S6-08 simulator: done (see below). Not started: text, SVG import.
 
 ## Known limits
 

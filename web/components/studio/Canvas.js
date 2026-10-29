@@ -398,7 +398,8 @@ export default function Canvas({
   const selected = document.objects.find((o) => o.id === selectedId);
   const editing = editingId ? document.objects.find((o) => o.id === editingId) : null;
   const editable = editing ? editablePath(editing) : null;
-  const selFrame = selected && !editable ? selectionFrame(selected, transformDrag, cam) : null;
+  const selFrame =
+    selected && !editable && cam ? selectionFrame(selected, transformDrag, cam) : null;
   const grid = cam ? gridLevels(cam.scale) : { minor: false, major: false };
   const selecting = tool === 'select';
 
